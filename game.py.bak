@@ -6,8 +6,8 @@ from text_system import TextSystemMixin
 from rl_lang import RLEngine, RLError, TurnEnd
 from themes import load_all_themes, Theme
 from scores import load_scores, add_score, get_player_name
-from sigils import load_sigils
 from particles import Particles
+from races import RACES, load_player_race, save_player_race, get as get_race
 
 DATA_FILE   = Path(__file__).parent / "data" / "nethack_data.json"
 SCRIPT_FILE = Path(__file__).parent / "scripts" / "explorer.rl"
@@ -85,7 +85,7 @@ class Game(TextSystemMixin):
     SHIELD_KEYS = {"S_GIANT", "S_GOLEM", "S_TRAPPER", "S_JELLY", "S_MIMIC",
                    "S_ANT", "S_QUADRUPED"}
 
-    def __init__(self, data):
+    def __init__(self, data, race_key=None):
         self.sym = data["symbols"].get("default", {})
         self.mon_pool = self._build_pool(data.get("monsters", []))
         self.item_pool = self._build_item_pool(data.get("items", []))
@@ -122,14 +122,17 @@ class Game(TextSystemMixin):
         # 粒子
         self.particles = Particles()
 
-        # 法印（从局外加载）
-        self.sigils = []
-        for sg in load_sigils()[:4]:
-            sg = dict(sg)
-            sg["charges_left"] = sg.get("charges", 0)
-            self.sigils.append(sg)
-        self.sigil_cursor = 0
-        self.sigil_panel = False
+        # 种族
+        self.race_key = race_key if race_key else load_player_race()
+        self.race = get_race(self.race_key)
+        self.max_hp += self.race["hp"]
+        self.hp = self.max_hp
+        self.race_atk = self.race["atk"]
+        self.race_def = self.race["def"]
+        self.atk_bonus += self.race_atk
+        self.def_bonus += self.race_def
+        self.race_skill_cd = 0
+
 
         # 显形
         self.reveal_turns = 0
@@ -144,7 +147,7 @@ class Game(TextSystemMixin):
         self.won = False
 
         # 文本系统
-        self.msg = "hjkl/n 移 | i 包 | g 法印 | l 查 | s 脚本 | T 主题 | H 榜 | q 退"
+        self.msg = "hjkl/n 移 | i 包 | R 种族技 | l 查 | s 脚本 | T 主题 | H 榜 | q 退"
         self._init_text(data)
 
         # 关卡
@@ -380,6 +383,8 @@ class Game(TextSystemMixin):
         self.particles.tick()
         if self.reveal_turns > 0:
             self.reveal_turns -= 1
+        if self.race_skill_cd > 0:
+            self.race_skill_cd -= 1
         if getattr(self, "invuln_turns", 0) > 0:
             self.invuln_turns -= 1
         if self.map[ny][nx] == "__STAIR__":
@@ -393,7 +398,8 @@ class Game(TextSystemMixin):
         self._monster_turns()
 
     def _attack(self, m):
-        dmg = random.randint(1, 6) + self.level - 1 + self.atk_bonus
+        dmg = (random.randint(1, 6) + self.level - 1 + self.atk_bonus
+               + getattr(self, 'temp_atk_bonus', 0))
         sh = m.get("shield", 0)
         if sh > 0:
             dmg = max(1, dmg - dmg * sh // 100)
@@ -405,6 +411,7 @@ class Game(TextSystemMixin):
             bonus = 300 if is_boss else 0
             self.score += m["level"] * 5 + bonus
             gain = m["level"] * (3 if is_boss else 1)
+            gain = int(gain * self.race.get("exp_mul", 1.0))
             self.exp += gain
             if is_boss:
                 self.particles.burst(m["x"], m["y"], "★", n=20, color=3, radius=4)
@@ -655,229 +662,6 @@ class Game(TextSystemMixin):
             )
         self.popup = ("排行榜 · Top 20", lines)
 
-    # ---------- 法印 ----------
-    def _open_sigils(self):
-        self.sigil_panel = True
-        if self.sigil_cursor >= len(self.sigils):
-            self.sigil_cursor = max(0, len(self.sigils) - 1)
-        if not self.sigils:
-            self.msg = "没有法印 · 在局外运行 python3 sigils.py 刻印"
-
-    def _close_sigils(self):
-        self.sigil_panel = False
-
-    def _sigil_move(self, d):
-        if not self.sigils:
-            return
-        self.sigil_cursor = (self.sigil_cursor + d) % len(self.sigils)
-
-    def _use_sigil(self):
-        if not self.sigils:
-            self.msg = "没有法印"
-            return
-        idx = min(self.sigil_cursor, len(self.sigils) - 1)
-        sg = self.sigils[idx]
-        if sg.get("charges_left", 0) <= 0:
-            self.msg = f"{sg['name']} 已用尽"
-            return
-
-        effects = sg.get("effects", [])
-        if not effects:
-            self.msg = f"{sg['name']} 没有任何效果"
-            return
-
-        # 先计算代价
-        total_cost = sum(int(e.get("amount", 0))
-                         for e in effects if e.get("do") == "cost_hp")
-        if total_cost > 0 and self.hp <= total_cost:
-            self.msg = f"HP 不足以承受 {sg['name']} 的代价（需 {total_cost}）"
-            return
-
-        # 依次执行所有效果
-        self.particles.magic(self.px, self.py, color=7)
-        lines = []
-        for eff in effects:
-            msg = self._exec_sigil_effect(eff)
-            if msg: lines.append(msg)
-        sg["charges_left"] -= 1
-        self.msg = f"{sg['sym']} {sg['name']}: " + " | ".join(lines)[:60]
-
-    def _exec_sigil_effect(self, eff):
-        kind = eff.get("do")
-        if kind == "cost_hp":
-            amt = int(eff.get("amount", 5))
-            self.hp -= amt
-            self.particles.burst(self.px, self.py, "v", n=4, color=2)
-            if self.hp <= 0:
-                self.hp = 0
-                self._handle_death("法印代价")
-            return f"-{amt}HP"
-
-        if kind == "heal":
-            amt = int(eff.get("amount", 10)) + self.level
-            heal = min(amt, self.max_hp - self.hp)
-            self.hp += heal
-            self.particles.heal(self.px, self.py)
-            return f"+{heal}HP"
-
-        if kind == "damage_nearest":
-            if not self.monsters: return "无目标"
-            m = min(self.monsters,
-                    key=lambda x: abs(x["x"]-self.px)+abs(x["y"]-self.py))
-            return self._sigil_damage(m, int(eff.get("amount", 10)))
-
-        if kind == "damage_all":
-            amt = int(eff.get("amount", 8))
-            rad = int(eff.get("radius", 5))
-            hits = 0
-            for m in list(self.monsters):
-                if abs(m["x"]-self.px) + abs(m["y"]-self.py) <= rad:
-                    self._sigil_damage(m, amt); hits += 1
-            if hits == 0: return "无目标"
-            return f"命中 {hits} 敌"
-
-        if kind == "shield":
-            amt = int(eff.get("amount", 3))
-            self.temp_def_bonus += amt
-            self.particles.magic(self.px, self.py, color=6)
-            return f"盾+{amt}"
-
-        if kind == "push":
-            pw = int(eff.get("power", 3))
-            cnt = 0
-            for m in list(self.monsters):
-                if abs(m["x"]-self.px) + abs(m["y"]-self.py) <= 1:
-                    dx = 1 if m["x"] > self.px else (-1 if m["x"] < self.px else 0)
-                    dy = 1 if m["y"] > self.py else (-1 if m["y"] < self.py else 0)
-                    for _ in range(pw):
-                        nx, ny = m["x"]+dx, m["y"]+dy
-                        if 0 <= nx < self.W and 0 <= ny < self.H and \
-                                self.map[ny][nx] in self.walkable:
-                            m["x"], m["y"] = nx, ny
-                        else:
-                            break
-                    self.particles.burst(m["x"], m["y"], "»", n=3, color=6)
-                    cnt += 1
-            return f"推 {cnt} 敌"
-
-        if kind == "blink":
-            for _ in range(80):
-                nx = random.randint(1, self.W-2); ny = random.randint(1, self.H-2)
-                if self.map[ny][nx] not in self.walkable: continue
-                if any(o["x"] == nx and o["y"] == ny for o in self.monsters): continue
-                self.particles.magic(self.px, self.py, color=5)
-                self.px, self.py = nx, ny
-                self.particles.magic(nx, ny, color=5)
-                return f"→({nx},{ny})"
-            return "无法传送"
-
-        if kind == "reveal":
-            t = int(eff.get("turns", 5))
-            self.reveal_turns = max(self.reveal_turns, t)
-            self.particles.magic(self.px, self.py, color=7)
-            return f"显形{t}"
-
-        if kind == "gain_score":
-            amt = int(eff.get("amount", 20))
-            self.score += amt
-            return f"+{amt}分"
-
-        if kind == "gain_exp":
-            amt = int(eff.get("amount", 10))
-            self.exp += amt
-            self._check_levelup()
-            return f"+{amt}exp"
-
-        if kind == "teleport_stairs":
-            for _ in range(80):
-                x = random.randint(1, self.W-2); y = random.randint(1, self.H-2)
-                if self.map[y][x] == "__STAIR__":
-                    self.particles.magic(self.px, self.py, color=5)
-                    self.px, self.py = x, y
-                    self.particles.magic(x, y, color=5)
-                    return "→楼梯"
-            return "无楼梯"
-
-        if kind == "make_invuln":
-            t = int(eff.get("turns", 2))
-            self.invuln_turns = max(getattr(self, "invuln_turns", 0), t)
-            return f"无敌{t}"
-
-        return f"?{kind}"
-
-    def _sigil_damage(self, m, amount):
-        m["hp"] -= amount
-        self.particles.hit(m["x"], m["y"], color=7)
-        if m["hp"] <= 0 and m in self.monsters:
-            self.monsters.remove(m)
-            self.kills += 1
-            is_boss = m.get("is_boss", False)
-            self.score += m["level"] * 5 + (300 if is_boss else 0)
-            self.exp += m["level"] * (3 if is_boss else 1)
-            self.particles.die(m["x"], m["y"], color=7)
-            self._check_levelup()
-            if is_boss: self.boss = None
-        return None
-
-    def _draw_sigil_panel(self, s, W, H):
-        box_w = min(W - 2, 52)
-        box_h = min(self.H, 4 + max(1, len(self.sigils)) + 2)
-        x0 = max(0, (W - box_w) // 2)
-        y0 = max(0, (self.H - box_h) // 2)
-        attr_frame = curses.color_pair(C_BAR) | curses.A_BOLD
-        attr_head  = curses.color_pair(C_PLR) | curses.A_BOLD
-        attr_item  = curses.color_pair(C_MSG)
-        attr_sel   = curses.color_pair(C_PLR) | curses.A_BOLD | curses.A_REVERSE
-
-        try:
-            for i in range(box_h):
-                s.addstr(y0+i, x0, " " * box_w, attr_frame)
-            s.addstr(y0, x0, "┌" + "─"*(box_w-2) + "┐", attr_frame)
-            for i in range(1, box_h-1):
-                s.addstr(y0+i, x0, "│", attr_frame)
-                s.addstr(y0+i, x0+box_w-1, "│", attr_frame)
-            s.addstr(y0+box_h-1, x0, "└" + "─"*(box_w-2) + "┘", attr_frame)
-            s.addstr(y0, x0+2, " 法印刻印台 ", attr_head)
-        except curses.error:
-            return
-
-        if not self.sigils:
-            try:
-                s.addstr(y0+2, x0+2, " (无 · 局外 python3 sigils.py 刻印)", attr_item)
-            except curses.error:
-                pass
-        else:
-            for i, sg in enumerate(self.sigils):
-                sel = (i == self.sigil_cursor)
-                left = sg.get("charges_left", 0); total = sg.get("charges", 0)
-                sym = sg.get("sym", "?")
-                name = sg.get("name", "?")
-                line = f" {sym} {name[:10]:<10} 充能 {left}/{total}"
-                try:
-                    s.addstr(y0+2+i, x0+1, line[:box_w-2],
-                              attr_sel if sel else attr_item)
-                except curses.error:
-                    pass
-                # 选中时在下一行显示效果描述
-                if sel and sg.get("effects"):
-                    try:
-                        from sigils import describe_effect
-                        descs = " · ".join(describe_effect(e) for e in sg["effects"])
-                        s.addstr(y0+2+i+1, x0+3, descs[:box_w-4], attr_item)
-                        # 后续项往下挪一行
-                        for j in range(i+1, len(self.sigils)):
-                            s2 = self.sigils[j]
-                            l2 = (f" {s2.get('sym','?')} {s2.get('name','?')[:10]:<10}"
-                                  f" 充能 {s2.get('charges_left',0)}/{s2.get('charges',0)}")
-                            s.addstr(y0+3+j, x0+1, l2[:box_w-2], attr_item)
-                    except curses.error:
-                        pass
-
-        hint = " ↑/↓ 选择   ← 使用   i/Esc 关闭 "
-        try:
-            s.addstr(y0+box_h-2, x0+1, hint[:box_w-2], attr_head)
-        except curses.error:
-            pass
 
     # ---------- 物品栏 ----------
     def _weapon_bonus(self, name):
@@ -1166,6 +950,89 @@ class Game(TextSystemMixin):
             pass
 
 
+    # ---------- 种族技能 ----------
+    def _use_race_skill(self):
+        if self.race_skill_cd > 0:
+            self.msg = f"{self.race['skill']['name']} 冷却中（{self.race_skill_cd} 回合）"
+            return
+        sk = self.race["skill"]
+        name = sk["name"]
+        amount = sk.get("amount", 0)
+
+        if self.race_key == "human":
+            self.exp += amount
+            self._check_levelup()
+            self.msg = f"{name} +{amount}exp"
+            self.particles.magic(self.px, self.py, color=7)
+
+        elif self.race_key == "elf":
+            rng = amount
+            for _ in range(80):
+                nx = random.randint(max(1, self.px - rng), min(self.W - 2, self.px + rng))
+                ny = random.randint(max(1, self.py - rng), min(self.H - 2, self.py + rng))
+                if self.map[ny][nx] not in self.walkable: continue
+                if any(o["x"] == nx and o["y"] == ny for o in self.monsters): continue
+                self.particles.magic(self.px, self.py, color=5)
+                self.px, self.py = nx, ny
+                self.particles.magic(nx, ny, color=5)
+                self.msg = f"{name} →({nx},{ny})"
+                break
+            else:
+                self.msg = "无落点"
+                return
+
+        elif self.race_key == "dwarf":
+            self.temp_def_bonus += amount
+            self.particles.magic(self.px, self.py, color=6)
+            self.msg = f"{name} 减伤 +{amount}（本层）"
+
+        elif self.race_key == "orc":
+            self.temp_atk_bonus = getattr(self, "temp_atk_bonus", 0) + amount
+            self.temp_def_bonus -= 3
+            self.particles.burst(self.px, self.py, "!", n=8, color=2, radius=2)
+            self.msg = f"{name} 攻击 +{amount} 防御 -3（本层）"
+
+        elif self.race_key == "goblin":
+            if not self.monsters:
+                self.msg = "没有目标"
+                return
+            m = min(self.monsters,
+                    key=lambda x: abs(x["x"]-self.px) + abs(x["y"]-self.py))
+            d = abs(m["x"]-self.px) + abs(m["y"]-self.py)
+            if d > 5:
+                self.msg = "目标太远（需 5 格内）"
+                return
+            self.score += amount
+            self.particles.burst(m["x"], m["y"], "$", n=5, color=8, radius=1)
+            self.msg = f"{name} 从 {m['name']} 偷到 {amount} 分"
+
+        elif self.race_key == "dragonborn":
+            hits = 0
+            for m in list(self.monsters):
+                if abs(m["x"]-self.px) + abs(m["y"]-self.py) <= 4:
+                    m["hp"] -= amount
+                    self.particles.hit(m["x"], m["y"], color=2)
+                    hits += 1
+                    if m["hp"] <= 0 and m in self.monsters:
+                        self.monsters.remove(m)
+                        self.kills += 1
+                        is_boss = m.get("is_boss", False)
+                        self.score += m["level"] * 5 + (300 if is_boss else 0)
+                        self.exp += m["level"] * (3 if is_boss else 1)
+                        self.particles.die(m["x"], m["y"], color=2)
+                        if is_boss: self.boss = None
+            self.particles.burst(self.px, self.py, "*", n=12, color=2, radius=4)
+            if hits:
+                self.msg = f"{name} 灼烧 {hits} 敌 -{amount}"
+            else:
+                self.msg = f"{name}（无目标）"
+
+        else:
+            self.msg = "无技能"
+            return
+
+        self.race_skill_cd = sk.get("cooldown", 10)
+
     def _load_script(self):
         try:
             if not SCRIPT_FILE.exists():
@@ -1279,7 +1146,9 @@ class Game(TextSystemMixin):
                     pass
         s.addch(self.py, self.px, "@", curses.color_pair(C_PLR) | curses.A_BOLD)
         mode = "自动" if self.auto_mode else ("手动" if self.script else "无脚本")
-        eq = f"⚔{self.atk_bonus} 🛡{self.def_bonus + self.temp_def_bonus}"
+        cd = self.race_skill_cd
+        cd_str = "就绪" if cd == 0 else f"CD{cd:>2}"
+        eq = f"{self.race['sym']} {self.race['name'][:2]} ⚔{self.atk_bonus} 🛡{self.def_bonus + self.temp_def_bonus} [{cd_str}]"
         if self.boss:
             eq += " ☠BOSS"
         bar = (f" {eq} Lv{self.level} HP{self.hp:>2}/{self.max_hp} E{self.exp:>2}/{self.exp_next} "
@@ -1295,11 +1164,6 @@ class Game(TextSystemMixin):
                 self._draw_inventory(s, W, H)
             except Exception as e:
                 self.msg = f"[draw err] {e}"
-        if self.sigil_panel:
-            try:
-                self._draw_sigil_panel(s, W, H)
-            except Exception as e:
-                self.msg = f"[sigil err] {e}"
         s.refresh()
 
     def run(self, s):
@@ -1347,22 +1211,10 @@ class Game(TextSystemMixin):
                 self._draw(s)
                 continue
 
-            if self.sigil_panel:
-                if k in (ord("g"), 27, ord("q"), ord("Q")):
-                    self._close_sigils()
-                elif k in (curses.KEY_DOWN, ord("j")):
-                    self._sigil_move(+1)
-                elif k in (curses.KEY_UP, ord("k")):
-                    self._sigil_move(-1)
-                elif k in (curses.KEY_LEFT, 10, 13):
-                    self._use_sigil()
-                self._draw(s)
-                continue
-
             if k in (ord("q"), ord("Q")): break
             elif k == ord("H"):   self._show_leaderboard()
             elif k == ord("i"):   self._open_inventory()
-            elif k == ord("g"):   self._open_sigils()
+            elif k == ord("R"):   self._use_race_skill()
             elif k == ord("u"):
                 if not self._use_healing():
                     self.msg = "没有可用的治疗药水/食物"
@@ -1385,11 +1237,116 @@ class Game(TextSystemMixin):
             self._draw(s)
 
 
+def select_race(stdscr):
+    """游戏内种族选择前端，返回选中的 race key"""
+    if curses.has_colors():
+        curses.start_color()
+        try:
+            curses.use_default_colors()
+            bg = -1
+        except curses.error:
+            bg = curses.COLOR_BLACK
+        curses.init_pair(1, curses.COLOR_CYAN, bg)
+        curses.init_pair(2, curses.COLOR_YELLOW, bg)
+        curses.init_pair(3, curses.COLOR_GREEN, bg)
+        curses.init_pair(4, curses.COLOR_WHITE, bg)
+        curses.init_pair(5, curses.COLOR_MAGENTA, bg)
+    else:
+        bg = 0
+
+    curses.curs_set(0)
+    stdscr.keypad(True)
+    stdscr.nodelay(False)
+
+    keys = list(RACES.keys())
+    saved = load_player_race()
+    cur = keys.index(saved) if saved in keys else 0
+
+    while True:
+        stdscr.clear()
+        H, W = stdscr.getmaxyx()
+
+        banner = "════════════════════════════════════"
+        title  = "         选 择 你 的 种 族         "
+        top = max(0, (W - len(banner)) // 2)
+        try:
+            stdscr.addstr(1, top, banner, curses.color_pair(5) | curses.A_BOLD)
+            stdscr.addstr(2, top, title,  curses.color_pair(2) | curses.A_BOLD)
+            stdscr.addstr(3, top, banner, curses.color_pair(5) | curses.A_BOLD)
+        except curses.error:
+            pass
+
+        list_x = 3
+        list_y = 6
+        for i, k in enumerate(keys):
+            r = RACES[k]
+            sel = (i == cur)
+            mark = "▶" if sel else " "
+            line = f" {mark} {r['sym']}  {r['name']:<8}"
+            attr = (curses.color_pair(2) | curses.A_BOLD | curses.A_REVERSE
+                    if sel else curses.color_pair(4))
+            try:
+                stdscr.addstr(list_y + i * 2, list_x, line, attr)
+                stdscr.addstr(list_y + i * 2 + 1, list_x + 4, r['desc'],
+                              curses.color_pair(4) | curses.A_DIM)
+            except curses.error:
+                pass
+
+        r = RACES[keys[cur]]
+        det_x = list_x + 26
+        det_y = list_y
+        lines = [
+            (f"{r['sym']}  {r['name']}",  curses.color_pair(2) | curses.A_BOLD),
+            ("", 0),
+            (r['desc'],                    curses.color_pair(4)),
+            ("", 0),
+            (f"生命   {r['hp']:+d}",       curses.color_pair(4)),
+            (f"攻击   {r['atk']:+d}",      curses.color_pair(4)),
+            (f"防御   {r['def']:+d}",      curses.color_pair(4)),
+            (f"经验   ×{r['exp_mul']:.2f}", curses.color_pair(4)),
+            ("", 0),
+            (f"技能 · {r['skill']['name']}", curses.color_pair(3) | curses.A_BOLD),
+            (f"冷却 {r['skill']['cooldown']} 回合", curses.color_pair(3)),
+            (r['skill']['desc'].format(amount=r['skill'].get('amount', 0)),
+             curses.color_pair(3)),
+        ]
+        for i, (line, attr) in enumerate(lines):
+            if not line:
+                continue
+            try:
+                stdscr.addstr(det_y + i, det_x, line, attr)
+            except curses.error:
+                pass
+
+        hint = " ↑/↓ 切换     Enter / Space 确认 "
+        hy = H - 2
+        hx = max(0, (W - len(hint)) // 2)
+        try:
+            stdscr.addstr(hy, hx, hint, curses.color_pair(1) | curses.A_BOLD)
+        except curses.error:
+            pass
+
+        stdscr.refresh()
+        k = stdscr.getch()
+
+        if k in (curses.KEY_UP, ord('k')):
+            cur = (cur - 1) % len(keys)
+        elif k in (curses.KEY_DOWN, ord('j')):
+            cur = (cur + 1) % len(keys)
+        elif k in (10, 13, curses.KEY_ENTER, ord(' ')):
+            save_player_race(keys[cur])
+            return keys[cur]
+        elif k in (ord('q'), ord('Q')):
+            save_player_race(keys[cur])
+            return keys[cur]
+
+
 if __name__ == "__main__":
     data = load_data()
     name = get_player_name()
     def _run(stdscr):
-        g = Game(data)
+        race_key = select_race(stdscr)
+        g = Game(data, race_key=race_key)
         g.player_name = name
         g.run(stdscr)
     curses.wrapper(_run)

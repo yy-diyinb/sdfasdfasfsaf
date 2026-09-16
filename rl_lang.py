@@ -585,6 +585,17 @@ class RLEngine:
         g["inv"]             = self._bi_inv
         g["equipped"]        = self._bi_equipped
         g["reachable"]       = self._bi_reachable
+        g["altars"]          = self._bi_altars
+        g["nearest_altar"]   = self._bi_nearest_altar
+        g["at_altar"]        = self._bi_at_altar
+        g["altar_sacrifice"] = self._bi_altar_sacrifice
+        g["altar_value"]     = self._bi_altar_value
+        g["poisoned"]        = self._bi_poisoned
+        g["gold"]            = self._bi_gold
+        g["near_shop"]       = self._bi_near_shop
+        g["shop_items"]      = self._bi_shop_items
+        g["buy"]             = self._bi_buy
+        g["sell"]            = self._bi_sell
         # 纯函数
         g["abs"]  = abs
         g["min"]  = min
@@ -615,7 +626,13 @@ class RLEngine:
         return Obj(hp=g.hp, max_hp=g.max_hp, x=g.px, y=g.py,
                    kills=g.kills, score=g.score, dead=g.dead,
                    level=getattr(g, "level", 1), exp=getattr(g, "exp", 0),
-                   depth=getattr(g, "depth", 1))
+                   depth=getattr(g, "depth", 1),
+                   atk_bonus=getattr(g, "atk_bonus", 0),
+                   def_bonus=getattr(g, "def_bonus", 0),
+                   temp_atk_bonus=getattr(g, "temp_atk_bonus", 0),
+                   temp_def_bonus=getattr(g, "temp_def_bonus", 0),
+                   poison_turns=getattr(g, "poison_turns", 0),
+                   gold=getattr(g, "gold", 0))
 
     def _make_monster(self, m):
         return Obj(name=m["name"], x=m["x"], y=m["y"],
@@ -687,6 +704,88 @@ class RLEngine:
         if ok:
             raise TurnEnd()
         return False
+
+    def _bi_altars(self):
+        return [Obj(x=x, y=y) for (x, y) in getattr(self.game, "altars", [])]
+
+    def _bi_nearest_altar(self):
+        g = self.game
+        if not getattr(g, "altars", None):
+            return None
+        df = self._dist_field()
+        best, best_d = None, 10**9
+        for (x, y) in g.altars:
+            d = df[y][x]
+            if d != -1 and d < best_d:
+                best_d, best = d, (x, y)
+        if best is None:
+            return None
+        return Obj(x=best[0], y=best[1], dist=best_d)
+
+    def _bi_at_altar(self):
+        g = self.game
+        return (g.px, g.py) in getattr(g, "altars", [])
+
+    def _bi_altar_value(self):
+        g = self.game
+        vals = []
+        for it in getattr(g, "inventory", []):
+            if it["class"] in ("WEAPON", "ARMOR"):
+                try: vals.append(g._inv_item_value(it))
+                except Exception: vals.append(1)
+        return min(vals) if vals else -1
+
+    def _bi_altar_sacrifice(self):
+        g = self.game
+        if not self._bi_at_altar(): return False
+        fn = getattr(g, "_altar_sacrifice", None)
+        if not fn: return False
+        before = len(g.inventory)
+        fn(g.px, g.py)
+        if len(g.inventory) < before:
+            raise TurnEnd()
+        return False
+
+    def _bi_poisoned(self):
+        return getattr(self.game, "poison_turns", 0) > 0
+
+    # ---------- 商店 ----------
+    def _bi_gold(self):
+        return getattr(self.game, "gold", 0)
+
+    def _bi_near_shop(self):
+        g = self.game
+        if getattr(g, "shop_pos", None) is None:
+            return None
+        df = self._dist_field()
+        x, y = g.shop_pos
+        d = df[y][x]
+        if d == -1: return None
+        return Obj(x=x, y=y, dist=d)
+
+    def _bi_shop_items(self):
+        return [Obj(name=it["name"], cls=it["class"], price=it["price"])
+                for it in getattr(self.game, "shop_items", [])]
+
+    def _bi_buy(self, idx):
+        g = self.game
+        if not getattr(g, "shop_open", False):
+            return False
+        g.shop_cursor = int(idx)
+        g.shop_mode = "buy"
+        before = len(g.inventory)
+        g._shop_buy()
+        return len(g.inventory) > before
+
+    def _bi_sell(self, idx):
+        g = self.game
+        if not getattr(g, "shop_open", False):
+            return False
+        g.shop_cursor = int(idx)
+        g.shop_mode = "sell"
+        before = len(g.inventory)
+        g._shop_sell()
+        return len(g.inventory) < before
 
     def _bi_inv(self):
         return [Obj(name=it["name"], cls=it["class"])

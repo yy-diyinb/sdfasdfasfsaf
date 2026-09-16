@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# 本地数据
+save.json
+data/config.json
+
+# 备份
+*.bak
+*.bak[0-9]
+data/*.bak
+scripts/*.bak
+
+# 上游源码 & 压缩包
+nethack-3.6.7/
+*.tar.gz
+*.tar.xz
+*.dsc

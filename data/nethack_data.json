@@ -5196,6 +5196,18 @@
       "name": "rock",
       "symbol_key": "S_rock",
       "char": "*"
+    },
+    {
+      "class": "WEAPON",
+      "name": "vorpal blade",
+      "symbol_key": "S_weapon",
+      "char": ")"
+    },
+    {
+      "class": "WEAPON",
+      "name": "excalibur",
+      "symbol_key": "S_weapon",
+      "char": ")"
     }
   ],
   "descriptions": {

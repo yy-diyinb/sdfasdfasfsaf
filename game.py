@@ -7,9 +7,30 @@ from rl_lang import RLEngine, RLError, TurnEnd
 from themes import load_all_themes, Theme
 from scores import load_scores, add_score, get_player_name
 from particles import Particles
+from lang import tr, dwidth, pad, truncate
 from races import RACES, load_player_race, save_player_race, get as get_race
 
 DATA_FILE   = Path(__file__).parent / "data" / "nethack_data.json"
+SAVE_FILE   = Path(__file__).parent / "save.json"
+
+PRICE_BASE = {
+    "WEAPON": 5, "ARMOR": 5, "POTION": 3, "SCROLL": 3,
+    "WAND": 8, "RING": 8, "AMULET": 10, "GEM": 4,
+    "FOOD": 2, "TOOL": 3, "SPBOOK": 10,
+}
+
+DUNGEON_THEMES = [
+    {"name": "地牢", "floor": ".", "corr": "#",
+     "mon_mul": 1.0, "item_mul": 1.0, "desc": "古老的地牢"},
+    {"name": "矿洞", "floor": "·", "corr": "░",
+     "mon_mul": 1.2, "item_mul": 1.3, "desc": "矿石与哥布林"},
+    {"name": "精灵森林", "floor": "\"", "corr": ";",
+     "mon_mul": 0.8, "item_mul": 1.5, "desc": "树木与精灵"},
+    {"name": "深渊", "floor": ".", "corr": ":",
+     "mon_mul": 1.5, "item_mul": 0.7, "desc": "恶魔的领域"},
+    {"name": "亡灵领域", "floor": ",", "corr": ".",
+     "mon_mul": 1.3, "item_mul": 1.0, "desc": "死者的地盘"},
+]
 SCRIPT_FILE = Path(__file__).parent / "scripts" / "explorer.rl"
 THEMES_DIR  = Path(__file__).parent / "themes"
 
@@ -63,6 +84,7 @@ class Game(TextSystemMixin):
     }
 
     WEAPON_TIERS = [
+        ("vorpal", 11), ("excalibur", 10),
         ("crystal", 8), ("runed", 7),
         ("two-handed", 7), ("katana", 6), ("tsurugi", 7),
         ("long sword", 5), ("battle-axe", 5), ("war hammer", 5),
@@ -138,8 +160,26 @@ class Game(TextSystemMixin):
         self.reveal_turns = 0
         self.invuln_turns = 0
 
-        # 护盾法印临时加成
+        # 护盾法印 / 祭坛临时加成（本层有效）
         self.temp_def_bonus = 0
+        self.temp_atk_bonus = 0
+
+        # 祭坛 / 陷阱
+        self.altars = []
+        self.traps  = {}
+        self.poison_turns = 0
+
+        # 地牢主题
+        self.dungeon_theme_idx = 0
+        self.dungeon_name = "地牢"
+
+        # 金币 / 商店
+        self.gold = 0
+        self.shop_open = False
+        self.shop_items = []
+        self.shop_cursor = 0
+        self.shop_mode = "buy"
+        self.shop_pos = None
 
         # Boss 层
         self.boss = None
@@ -192,7 +232,10 @@ class Game(TextSystemMixin):
         self.crwall= s.get("S_crwall", "+")
         self.walls = {self.vwall, self.hwall, self.crwall}
         self.dnstair_char = s.get("S_dnstair", ">")
-        self.walkable = {self.floor, self.corr, "__STAIR__"}
+        self.altar_char   = s.get("S_altar", "_")
+        self.trap_char    = s.get("S_trap", "^")
+        self.walkable = {self.floor, self.corr, "__STAIR__",
+                         "__ALTAR__", "__TRAP__"}
 
     def _apply_theme(self, theme):
         self.theme = theme
@@ -253,7 +296,7 @@ class Game(TextSystemMixin):
             x = random.randint(1, self.W - 2)
             y = random.randint(1, self.H - 2)
             if self.map[y][x] in self.walkable and (x, y) not in occ \
-                    and self.map[y][x] != "__STAIR__":
+                    and self.map[y][x] not in ("__STAIR__", "__ALTAR__", "__TRAP__"):
                 return x, y
         return None
 
@@ -289,7 +332,19 @@ class Game(TextSystemMixin):
             })
         return out
 
+    def _apply_dungeon_theme(self):
+        idx = ((self.depth - 1) // 10) % len(DUNGEON_THEMES)
+        self.dungeon_theme_idx = idx
+        t = DUNGEON_THEMES[idx]
+        self.dungeon_name = t["name"]
+        s = self.sym
+        self.floor = t.get("floor") or s.get("S_floor", ".")
+        self.corr  = t.get("corr")  or s.get("S_corr", "#")
+        self.walkable = {self.floor, self.corr, "__STAIR__",
+                         "__ALTAR__", "__TRAP__", "__SHOP__"}
+
     def _new_level(self, first=False):
+        self._apply_dungeon_theme()
         self.rooms = []
         self.map = self._gen_map()
         if self.rooms:
@@ -297,20 +352,52 @@ class Game(TextSystemMixin):
             sx, sy = x + w // 2, y + h // 2
             self.map[sy][sx] = "__STAIR__"
             self.dnstair_x, self.dnstair_y = sx, sy
+        # 祭坛 & 陷阱
+        self.altars = []
+        self.traps  = {}
+        occ = {(self.px, self.py), (self.dnstair_x, self.dnstair_y)}
+        if random.random() < 0.20:
+            pos = self._free_floor(occ)
+            if pos:
+                x, y = pos
+                self.map[y][x] = "__ALTAR__"
+                self.altars.append(pos)
+                occ.add(pos)
+        for _ in range(random.randint(2, 4)):
+            pos = self._free_floor(occ)
+            if not pos: break
+            x, y = pos
+            self.map[y][x] = "__TRAP__"
+            self.traps[pos] = random.choice(["spike", "teleport", "poison"])
+            occ.add(pos)
+
+        # 商店（每 10 层）
+        self.shop_pos = None
+        self.shop_items = []
+        if self.depth % 10 == 0:
+            pos = self._free_floor(occ)
+            if pos:
+                x, y = pos
+                self.map[y][x] = "__SHOP__"
+                self.shop_pos = pos
+                self.shop_items = self._gen_shop_items()
+                occ.add(pos)
+
         is_boss = (self.depth % 5 == 0)
         if is_boss:
             self._spawn_boss_level()
         else:
             self.boss = None
-            n_mon  = min(6 + self.depth * 2, 25)
-            n_item = min(10 + self.depth, 20)
+            t = DUNGEON_THEMES[self.dungeon_theme_idx]
+            n_mon  = int(min(6 + self.depth * 2, 25) * t["mon_mul"])
+            n_item = int(min(10 + self.depth, 20) * t["item_mul"])
             self.items    = self._spawn_items(n_item)
             self.monsters = self._spawn(n_mon)
         if not first:
             if is_boss:
-                self.msg = f"⚠ 第 {self.depth} 层 · BOSS 巢穴 ⚠"
+                self.msg = f"⚠ 第 {self.depth} 层 · {self.dungeon_name} · BOSS 巢穴 ⚠"
             else:
-                self.msg = f"第 {self.depth} 层  (楼梯 {self.dnstair_x},{self.dnstair_y})"
+                self.msg = f"第 {self.depth} 层 · {self.dungeon_name}"
 
     def _spawn_boss_level(self):
         """Boss 层：一个小怪潮 + 一只 boss"""
@@ -340,16 +427,259 @@ class Game(TextSystemMixin):
         self.monsters = small + [self.boss]
         self.boss_warned = False
 
+    # ---------- 商店 ----------
+    def _gen_shop_items(self):
+        out = []
+        for _ in range(random.randint(5, 8)):
+            t = random.choice(self.item_pool)
+            out.append({
+                "name": t["name"], "char": t["char"],
+                "class": t["class"],
+                "price": self._buy_price(t["class"], t["name"]),
+            })
+        return out
+
+    def _buy_price(self, cls, name):
+        base = PRICE_BASE.get(cls, 3)
+        if cls == "WEAPON":
+            return base + self._weapon_bonus(name) * 3 + random.randint(0, 3)
+        if cls == "ARMOR":
+            return base + self._armor_bonus(name) * 3 + random.randint(0, 3)
+        return base + random.randint(0, 2)
+
+    def _sell_price(self, it):
+        return max(1, self._inv_item_value(it) * 2)
+
+    def _open_shop(self):
+        self.shop_open = True
+        self.shop_cursor = 0
+        self.shop_mode = "buy"
+        self.msg = f"商店 · 金币 {self.gold} · Tab 切换买/卖 · Esc 离开"
+
+    def _shop_move(self, d):
+        n = len(self.shop_items) if self.shop_mode == "buy" else len(self.inventory)
+        if n == 0: return
+        self.shop_cursor = (self.shop_cursor + d) % n
+
+    def _shop_buy(self):
+        if not self.shop_items: return
+        idx = min(self.shop_cursor, len(self.shop_items) - 1)
+        it = self.shop_items[idx]
+        if self.gold < it["price"]:
+            self.msg = f"金币不足 (需要 {it['price']})"
+            return
+        if len(self.inventory) >= 12:
+            self.msg = "背包已满"
+            return
+        self.gold -= it["price"]
+        self.inventory.append({
+            "name": it["name"], "char": it["char"],
+            "class": it["class"],
+        })
+        self.shop_items.pop(idx)
+        self.msg = f"买入 {tr(it['name'])} -{it['price']}金"
+        if self.shop_cursor >= len(self.shop_items):
+            self.shop_cursor = max(0, len(self.shop_items) - 1)
+
+    def _shop_sell(self):
+        if not self.inventory: return
+        idx = min(self.shop_cursor, len(self.inventory) - 1)
+        it = self.inventory[idx]
+        price = self._sell_price(it)
+        self.gold += price
+        self.score += price // 2
+        self.inventory.pop(idx)
+        self.msg = f"卖出 {tr(it['name'])} +{price}金"
+        if self.shop_cursor >= len(self.inventory):
+            self.shop_cursor = max(0, len(self.inventory) - 1)
+
+    def _draw_shop(self, s, W, H):
+        box_w = min(W - 2, 64)
+        box_h = min(self.H, 20)
+        x0 = max(0, (W - box_w) // 2)
+        y0 = max(0, (self.H - box_h) // 2)
+        frame = curses.color_pair(C_BAR) | curses.A_BOLD
+        head  = curses.color_pair(C_PLR) | curses.A_BOLD
+        item  = curses.color_pair(C_MSG)
+        sel   = curses.color_pair(C_PLR) | curses.A_BOLD | curses.A_REVERSE
+
+        for i in range(box_h):
+            try: s.addstr(y0+i, x0, " " * box_w, frame)
+            except curses.error: pass
+        try:
+            s.addstr(y0, x0, "┌" + "─"*(box_w-2) + "┐", frame)
+            for i in range(1, box_h-1):
+                s.addstr(y0+i, x0, "│", frame)
+                s.addstr(y0+i, x0+box_w-1, "│", frame)
+            s.addstr(y0+box_h-1, x0, "└" + "─"*(box_w-2) + "┘", frame)
+        except curses.error: pass
+
+        try:
+            s.addstr(y0, x0+2, f" 商店 · 金币 {self.gold} ", head)
+        except curses.error: pass
+
+        mid = box_w // 2
+        try:
+            s.addstr(y0+1, x0+1, " 商品", head)
+            s.addstr(y0+1, x0+mid, " 背包（卖出）", head)
+            s.addstr(y0+2, x0+1, "─"*(mid-2), frame)
+            s.addstr(y0+2, x0+mid, "─"*(box_w-mid-2), frame)
+        except curses.error: pass
+
+        max_l = box_h - 5
+        mode = self.shop_mode
+        # 左：商品
+        if not self.shop_items:
+            try: s.addstr(y0+3, x0+2, "(无)", item)
+            except curses.error: pass
+        else:
+            for i, it in enumerate(self.shop_items[:max_l]):
+                is_sel = (mode == "buy" and i == self.shop_cursor)
+                m = ">" if is_sel else " "
+                line = f" {m} {i+1}. {truncate(tr(it['name']), 18)}  {it['price']}金"
+                try:
+                    s.addstr(y0+3+i, x0+1, truncate(line, mid-2),
+                             sel if is_sel else item)
+                except curses.error: pass
+        # 右：背包
+        if not self.inventory:
+            try: s.addstr(y0+3, x0+mid+1, "(空)", item)
+            except curses.error: pass
+        else:
+            for i, it in enumerate(self.inventory[:max_l]):
+                is_sel = (mode == "sell" and i == self.shop_cursor)
+                m = ">" if is_sel else " "
+                price = self._sell_price(it)
+                line = f" {m} {i+1}. {truncate(tr(it['name']), 14)}  {price}金"
+                try:
+                    s.addstr(y0+3+i, x0+mid+1, truncate(line, box_w-mid-2),
+                             sel if is_sel else item)
+                except curses.error: pass
+
+        hint = " ↑/↓ 选择  Enter 买/卖  Tab 切换  Esc 离开 "
+        try:
+            s.addstr(y0+box_h-2, x0+1, truncate(hint, box_w-2), head)
+        except curses.error: pass
+
+    def _altar_sacrifice(self, x, y):
+        cands = [(self._inv_item_value(it), i, it)
+                 for i, it in enumerate(self.inventory)
+                 if it["class"] in ("WEAPON", "ARMOR")]
+        if not cands:
+            self.msg = "祭坛拒绝了你——背包里没有可献祭的装备"
+            return
+        _, i, it = min(cands, key=lambda t: t[0])
+        self.inventory.pop(i)
+        if it["class"] == "WEAPON":
+            self.temp_atk_bonus += 2
+            self.msg = f"你在祭坛前献祭了 {tr(it['name'])}，力量涌现 (+2攻)"
+        else:
+            self.temp_def_bonus += 2
+            self.msg = f"你在祭坛前献祭了 {tr(it['name'])}，护佑降临 (+2防)"
+        self.particles.burst(x, y, ch="*", n=12, color=3, radius=3)
+        self.map[y][x] = self.floor
+        if (x, y) in self.altars:
+            self.altars.remove((x, y))
+
+    def _trigger_trap(self, x, y):
+        ttype = self.traps.pop((x, y), None)
+        if ttype is None:
+            return
+        self.map[y][x] = self.floor
+        if ttype == "spike":
+            dmg = random.randint(5, 15)
+            self.hp -= dmg
+            self.particles.hit(x, y, color=2)
+            self.msg = f"踩到尖刺陷阱 -{dmg}HP"
+            if self.hp <= 0:
+                self._handle_death("尖刺陷阱")
+        elif ttype == "teleport":
+            for _ in range(200):
+                nx = random.randint(1, self.W - 2)
+                ny = random.randint(1, self.H - 2)
+                if self.map[ny][nx] in self.walkable:
+                    self.px, self.py = nx, ny
+                    self.particles.magic(nx, ny, color=5)
+                    self.msg = f"踩到传送陷阱 → ({nx},{ny})"
+                    break
+        elif ttype == "poison":
+            self.hp -= 3
+            self.poison_turns = 5
+            self.particles.burst(x, y, ch="~", n=6, color=2, radius=1)
+            self.msg = "踩到毒陷阱 -3HP · 中毒 5 回合"
+            if self.hp <= 0:
+                self._handle_death("毒陷阱")
+
+    def _tick_poison(self):
+        if self.poison_turns > 0:
+            self.poison_turns -= 1
+            self.hp -= 1
+            self.particles.add(self.px, self.py, "~", ttl=2, color=2)
+            if self.hp <= 0:
+                self._handle_death("毒")
+
     def _descend(self):
         self.depth += 1
         self.score += 50
         if self.depth >= 100:
             self._victory()
             return
-        heal = min(self.max_hp // 2, self.max_hp - self.hp)
+        heal = self.max_hp - self.hp
         if heal > 0: self.hp += heal
+        self.temp_atk_bonus = 0
+        self.temp_def_bonus = 0
+        self.poison_turns = 0
         self._new_level(first=False)
-        self.msg = f"下到第 {self.depth} 层 (+{heal}HP, +50分)"
+        self.msg = f"下到第 {self.depth} 层 (HP 回满 +{heal}, +50分)"
+        self._save()
+
+    # ---------- 存档 ----------
+    def _save(self):
+        state = {
+            "version": 1,
+            "race_key": getattr(self, "race_key", None),
+            "player_name": self.player_name,
+            "depth": self.depth, "score": self.score, "kills": self.kills,
+            "turn": self.turn, "level": self.level,
+            "exp": self.exp, "exp_next": self.exp_next,
+            "max_hp": self.max_hp, "hp": self.hp,
+            "atk_bonus": self.atk_bonus, "def_bonus": self.def_bonus,
+            "weapon": self.weapon, "armor": self.armor,
+            "inventory": self.inventory,
+            "gold": getattr(self, "gold", 0),
+        }
+        try:
+            SAVE_FILE.write_text(json.dumps(state, ensure_ascii=False))
+        except Exception as e:
+            self.msg = f"[save err] {e}"
+
+    @staticmethod
+    def load_state():
+        if not SAVE_FILE.exists():
+            return None
+        try:
+            return json.loads(SAVE_FILE.read_text())
+        except Exception:
+            return None
+
+    def restore(self, state):
+        self.player_name = state.get("player_name", self.player_name)
+        self.depth     = state.get("depth", 1)
+        self.score     = state.get("score", 0)
+        self.kills     = state.get("kills", 0)
+        self.turn      = state.get("turn", 0)
+        self.level     = state.get("level", 1)
+        self.exp       = state.get("exp", 0)
+        self.exp_next  = state.get("exp_next", 8)
+        self.max_hp    = state.get("max_hp", self.max_hp)
+        self.hp        = state.get("hp", self.max_hp)
+        self.atk_bonus = state.get("atk_bonus", 0)
+        self.def_bonus = state.get("def_bonus", 0)
+        self.weapon    = state.get("weapon")
+        self.armor     = state.get("armor")
+        self.inventory = state.get("inventory", [])
+        self.gold      = state.get("gold", 0)
+        self._new_level(first=(self.depth == 1))
 
     def _victory(self):
         self.won = True
@@ -391,7 +721,18 @@ class Game(TextSystemMixin):
             self._auto_pickup()
             self._descend()
             return
+
+        if self.map[ny][nx] == "__ALTAR__":
+            self._altar_sacrifice(nx, ny)
+        elif self.map[ny][nx] == "__TRAP__":
+            self._trigger_trap(nx, ny)
+        elif self.map[ny][nx] == "__SHOP__":
+            self._open_shop()
+
         self._auto_pickup()
+        self._tick_poison()
+        if self.dead:
+            return
         self.turn += 1
         if random.random() < 0.008:
             self._flavor()
@@ -415,16 +756,16 @@ class Game(TextSystemMixin):
             self.exp += gain
             if is_boss:
                 self.particles.burst(m["x"], m["y"], "★", n=20, color=3, radius=4)
-                self.msg = f"★ 击杀 BOSS {m['name']} +{gain}exp +{bonus}分"
+                self.msg = f"★ 击杀 BOSS {tr(m['name'])} +{gain}exp +{bonus}分"
                 self.boss = None
             else:
                 self.particles.die(m["x"], m["y"])
-                self.msg = f"击杀 {m['name']} +{gain}exp (+{m['level']*5}分)"
+                self.msg = f"击杀 {tr(m['name'])} +{gain}exp (+{m['level']*5}分)"
             self._check_levelup()
             self._auto_pickup(); return
         else:
             self.particles.hit(m["x"], m["y"], color=2)
-        self.msg = f"打 {m['name']} -{dmg}hp  (HP {m['hp']}/{m['max_hp']})"
+        self.msg = f"打 {tr(m['name'])} -{dmg}hp  (HP {m['hp']}/{m['max_hp']})"
 
     def _check_levelup(self):
         while self.exp >= self.exp_next:
@@ -445,22 +786,27 @@ class Game(TextSystemMixin):
         cls = it["class"]; name = it["name"].lower()
 
         if cls == "COIN" or "gold" in name:
-            v = random.randint(5, 30); self.score += v
-            self.msg = f"拾取 {it['name']} (+{v})"
+            v = random.randint(5, 30)
+            self.gold += v
+            self.score += v
+            self.msg = f"拾取 {tr(it['name'])} +{v}金"
             return
 
         if cls == "WEAPON":
             bonus = self._weapon_bonus(it["name"])
             if self.weapon is None or bonus > self.weapon.get("bonus", 0):
                 if self.weapon:
-                    self.inventory.append(self.weapon)
+                    if len(self.inventory) < 12:
+                        self.inventory.append(self.weapon)
+                    else:
+                        self.score += 2
                 it["bonus"] = bonus
                 self.weapon = it
                 self.atk_bonus = bonus
-                self.msg = f"装备 {it['name']}  +{bonus}攻"
+                self.msg = f"装备 {tr(it['name'])}  +{bonus}攻"
             elif len(self.inventory) < 12:
                 self.inventory.append(it)
-                self.msg = f"拾取 {it['name']} (入包)"
+                self.msg = f"拾取 {tr(it['name'])} (入包)"
             else:
                 self.score += 2; self.msg = "背包满"
             return
@@ -469,14 +815,17 @@ class Game(TextSystemMixin):
             bonus = self._armor_bonus(it["name"])
             if self.armor is None or bonus > self.armor.get("bonus", 0):
                 if self.armor:
-                    self.inventory.append(self.armor)
+                    if len(self.inventory) < 12:
+                        self.inventory.append(self.armor)
+                    else:
+                        self.score += 2
                 it["bonus"] = bonus
                 self.armor = it
                 self.def_bonus = bonus
-                self.msg = f"穿上 {it['name']}  +{bonus}防"
+                self.msg = f"穿上 {tr(it['name'])}  +{bonus}防"
             elif len(self.inventory) < 12:
                 self.inventory.append(it)
-                self.msg = f"拾取 {it['name']} (入包)"
+                self.msg = f"拾取 {tr(it['name'])} (入包)"
             else:
                 self.score += 2; self.msg = "背包满"
             return
@@ -486,13 +835,13 @@ class Game(TextSystemMixin):
                    "AMULET", "GEM", "TOOL", "SPBOOK"):
             if len(self.inventory) < 12:
                 self.inventory.append(it)
-                self.msg = f"拾取 {it['name']} (背包 {len(self.inventory)}/12)"
+                self.msg = f"拾取 {tr(it['name'])} (背包 {len(self.inventory)}/12)"
             else:
                 self.score += 2; self.msg = "背包满"
             return
 
         self.score += 3
-        self.msg = f"拾取 {it['name']} (+3)"
+        self.msg = f"拾取 {tr(it['name'])} (+3 未知类型)"
 
     # ---------- 怪物 AI ----------
     def _compute_dist_field(self):
@@ -576,25 +925,25 @@ class Game(TextSystemMixin):
 
     def _monster_attack(self, m):
         if getattr(self, "invuln_turns", 0) > 0:
-            self.msg = f"无敌状态 · {m['name']} 攻击无效"
+            self.msg = f"无敌状态 · {tr(m['name'])} 攻击无效"
             return
         raw = max(1, m["level"] // 2 + (self.depth - 1) // 3)
-        dmg = max(1, raw - self.def_bonus // 2)
+        dmg = max(1, raw - (self.def_bonus + self.temp_def_bonus) // 2)
         self.hp -= dmg
-        self.msg = f"{m['name']} 攻击你 -{dmg}hp"
+        self.msg = f"{tr(m['name'])} 攻击你 -{dmg}hp"
         if self.hp <= 0:
-            self._handle_death(m["name"])
+            self._handle_death(tr(m["name"]))
 
     def _monster_ranged_attack(self, m):
         if getattr(self, "invuln_turns", 0) > 0:
-            self.msg = f"无敌状态 · {m['name']} 远程无效"
+            self.msg = f"无敌状态 · {tr(m['name'])} 远程无效"
             return
         raw = max(1, m["level"] // 3 + (self.depth - 1) // 4)
-        dmg = max(1, raw - self.def_bonus // 2)
+        dmg = max(1, raw - (self.def_bonus + self.temp_def_bonus) // 2)
         self.hp -= dmg
-        self.msg = f"{m['name']} 远程攻击 -{dmg}hp"
+        self.msg = f"{tr(m['name'])} 远程攻击 -{dmg}hp"
         if self.hp <= 0:
-            self._handle_death(m["name"] + " (远程)")
+            self._handle_death(tr(m["name"]) + " (远程)")
 
     def _monster_wander(self, m):
         dirs = [(0, -1), (0, 1), (-1, 0), (1, 0)]
@@ -618,6 +967,13 @@ class Game(TextSystemMixin):
         if self._death_recorded:
             return
         self._death_recorded = True
+        # 死亡/通关后清存档
+        try:
+            SAVE_FILE.unlink()
+        except FileNotFoundError:
+            pass
+        except Exception:
+            pass
         try:
             _, rank = add_score(self.player_name, self.score,
                                 self.depth, self.level, self.kills)
@@ -650,13 +1006,13 @@ class Game(TextSystemMixin):
             self.popup = ("排行榜", ["暂无记录。开始你的冒险吧！"])
             return
         lines = []
-        lines.append(f"{'#':>2}  {'名字':<10} {'分数':>6} {'深':>3} {'Lv':>3} {'杀':>3}  日期")
+        lines.append(f"{'#':>2}  {pad('名字', 10)} {'分数':>6} {'深':>3} {'Lv':>3} {'杀':>3}  日期")
         lines.append("─" * 50)
         for i, s_ in enumerate(scores[:20]):
-            name = s_.get("name", "?")[:10]
+            name = s_.get("name", "?")
             date = s_.get("date", "")[:10]
             lines.append(
-                f"{i+1:>2}  {name:<10} {s_.get('score',0):>6} "
+                f"{i+1:>2}  {pad(truncate(name, 10), 10)} {s_.get('score',0):>6} "
                 f"{s_.get('depth',0):>3} {s_.get('level',0):>3} "
                 f"{s_.get('kills',0):>3}  {date}"
             )
@@ -684,14 +1040,14 @@ class Game(TextSystemMixin):
                 self.inventory.remove(it)
                 heal = random.randint(5, 12) + self.level
                 self.hp = min(self.max_hp, self.hp + heal)
-                self.msg = f"喝 {it['name']} +{heal}HP"
+                self.msg = f"喝 {tr(it['name'])} +{heal}HP"
                 return True
         for it in self.inventory:
             if it["class"] == "FOOD":
                 self.inventory.remove(it)
                 heal = random.randint(2, 5)
                 self.hp = min(self.max_hp, self.hp + heal)
-                self.msg = f"吃 {it['name']} +{heal}HP"
+                self.msg = f"吃 {tr(it['name'])} +{heal}HP"
                 return True
         return False
 
@@ -723,16 +1079,16 @@ class Game(TextSystemMixin):
             if "heal" in name or "extra" in name:
                 heal = random.randint(5, 12) + self.level
                 self.hp = min(self.max_hp, self.hp + heal)
-                self.msg = f"喝 {it['name']}  +{heal}HP"
+                self.msg = f"喝 {tr(it['name'])}  +{heal}HP"
             else:
                 self.score += 5
-                self.msg = f"喝下 {it['name']}  (+5分)"
+                self.msg = f"喝下 {tr(it['name'])}  (+5分)"
 
         elif cls == "FOOD":
             self.inventory.pop(idx)
             heal = random.randint(2, 5)
             self.hp = min(self.max_hp, self.hp + heal)
-            self.msg = f"吃 {it['name']}  +{heal}HP"
+            self.msg = f"吃 {tr(it['name'])}  +{heal}HP"
 
         elif cls == "WEAPON":
             old = self.weapon
@@ -742,7 +1098,7 @@ class Game(TextSystemMixin):
             self.atk_bonus = it["bonus"]
             if old:
                 self.inventory.append(old)
-            self.msg = f"装备 {it['name']}  +{it['bonus']}攻"
+            self.msg = f"装备 {tr(it['name'])}  +{it['bonus']}攻"
 
         elif cls == "ARMOR":
             old = self.armor
@@ -752,12 +1108,12 @@ class Game(TextSystemMixin):
             self.def_bonus = it["bonus"]
             if old:
                 self.inventory.append(old)
-            self.msg = f"穿上 {it['name']}  +{it['bonus']}防"
+            self.msg = f"穿上 {tr(it['name'])}  +{it['bonus']}防"
 
         else:
             self.inventory.pop(idx)
             self.score += 3
-            self.msg = f"用掉 {it['name']}  (+3分)"
+            self.msg = f"用掉 {tr(it['name'])}  (+3分)"
 
         if self.inv_cursor >= len(self.inventory):
             self.inv_cursor = max(0, len(self.inventory) - 1)
@@ -794,7 +1150,7 @@ class Game(TextSystemMixin):
                 self.inventory.append(self.weapon)
             self.weapon = it
             self.atk_bonus = best_b
-            self.msg = f"自动装备 {it['name']} +{best_b}攻"
+            self.msg = f"自动装备 {tr(it['name'])} +{best_b}攻"
             did = True
 
         # 护甲
@@ -812,7 +1168,7 @@ class Game(TextSystemMixin):
                 self.inventory.append(self.armor)
             self.armor = it
             self.def_bonus = best_b
-            self.msg = f"自动穿上 {it['name']} +{best_b}防"
+            self.msg = f"自动穿上 {tr(it['name'])} +{best_b}防"
             did = True
 
         return did
@@ -832,7 +1188,7 @@ class Game(TextSystemMixin):
         self.inventory.pop(i)
         gain = max(1, v)
         self.score += gain
-        self.msg = f"自动销毁 {it['name']} +{gain}分"
+        self.msg = f"自动销毁 {tr(it['name'])} +{gain}分"
         if self.inv_cursor >= len(self.inventory):
             self.inv_cursor = max(0, len(self.inventory) - 1)
         return it["name"], gain
@@ -872,7 +1228,7 @@ class Game(TextSystemMixin):
             gain = 2
 
         self.score += gain
-        self.msg = f"销毁 {it['name']}  +{gain}分"
+        self.msg = f"销毁 {tr(it['name'])}  +{gain}分"
 
         if self.inv_cursor >= len(self.inventory):
             self.inv_cursor = max(0, len(self.inventory) - 1)
@@ -909,14 +1265,14 @@ class Game(TextSystemMixin):
         except curses.error:
             pass
 
-        w = self.weapon["name"] if self.weapon else "(空)"
-        a = self.armor["name"] if self.armor else "(空)"
-        line1 = f" 武器 {w[:20]:<20} +{self.atk_bonus}攻"
-        line2 = f" 护甲 {a[:20]:<20} +{self.def_bonus}防"
+        w = tr(self.weapon["name"]) if self.weapon else "(空)"
+        a = tr(self.armor["name"]) if self.armor else "(空)"
+        line1 = f" 武器 {pad(truncate(w, 20), 20)} +{self.atk_bonus}攻"
+        line2 = f" 护甲 {pad(truncate(a, 20), 20)} +{self.def_bonus}防"
         line3 = f" HP {self.hp}/{self.max_hp}   背包 {len(self.inventory)}/12"
         for i, line in enumerate((line1, line2, line3)):
             try:
-                s.addstr(y0+1+i, x0+1, line[:box_w-2], attr_item)
+                s.addstr(y0+1+i, x0+1, truncate(line, box_w-2), attr_item)
             except curses.error:
                 pass
 
@@ -935,17 +1291,17 @@ class Game(TextSystemMixin):
             for i, it in enumerate(self.inventory[:max_items]):
                 sel = (i == self.inv_cursor)
                 marker = ">" if sel else " "
-                name = it["name"][:26]
-                line = f" {marker} {i+1:>2}. {name:<26} [{it['class']}]"
+                name = pad(truncate(tr(it["name"]), 26), 26)
+                line = f" {marker} {i+1:>2}. {name} [{it['class']}]"
                 try:
-                    s.addstr(y0+5+i, x0+1, line[:box_w-2],
+                    s.addstr(y0+5+i, x0+1, truncate(line, box_w-2),
                               attr_sel if sel else attr_item)
                 except curses.error:
                     pass
 
         hint = " ↑/↓ 移动   ← 使用/装备   → 销毁得分数   i/Esc 关闭 "
         try:
-            s.addstr(y0+box_h-2, x0+1, hint[:box_w-2], attr_head)
+            s.addstr(y0+box_h-2, x0+1, truncate(hint, box_w-2), attr_head)
         except curses.error:
             pass
 
@@ -1004,7 +1360,7 @@ class Game(TextSystemMixin):
                 return
             self.score += amount
             self.particles.burst(m["x"], m["y"], "$", n=5, color=8, radius=1)
-            self.msg = f"{name} 从 {m['name']} 偷到 {amount} 分"
+            self.msg = f"{name} 从 {tr(m['name'])} 偷到 {amount} 分"
 
         elif self.race_key == "dragonborn":
             hits = 0
@@ -1115,6 +1471,14 @@ class Game(TextSystemMixin):
                 ch = self.map[y][x]
                 if ch == "__STAIR__":
                     s.addch(y, x, self.dnstair_char, stair_attr)
+                elif ch == "__ALTAR__":
+                    s.addch(y, x, self.altar_char, stair_attr)
+                elif ch == "__TRAP__":
+                    s.addch(y, x, self.trap_char,
+                            curses.color_pair(C_MON) | curses.A_BOLD)
+                elif ch == "__SHOP__":
+                    s.addch(y, x, "$",
+                            curses.color_pair(C_GOLD) | curses.A_BOLD)
                 elif ch in self.walls:
                     s.addch(y, x, ch, wall_attr)
                 else:
@@ -1152,11 +1516,11 @@ class Game(TextSystemMixin):
         if self.boss:
             eq += " ☠BOSS"
         bar = (f" {eq} Lv{self.level} HP{self.hp:>2}/{self.max_hp} E{self.exp:>2}/{self.exp_next} "
-               f"深{self.depth:>2} 分{self.score:>4} 杀{self.kills:>2} "
+               f"深{self.depth:>2} 金{self.gold:>4} 分{self.score:>4} 杀{self.kills:>2} "
                f"物{len(self.items):>2} 怪{len(self.monsters):>2} "
-               f"| {self.theme.name[:8]} | {mode}")
-        s.addstr(self.H, 0, bar[:W - 1], curses.color_pair(C_BAR) | curses.A_BOLD)
-        s.addstr(self.H + 1, 0, self.msg[:W - 1], curses.color_pair(C_MSG))
+               f"| {self.dungeon_name} | {mode}")
+        s.addstr(self.H, 0, truncate(bar, W - 1), curses.color_pair(C_BAR) | curses.A_BOLD)
+        s.addstr(self.H + 1, 0, truncate(self.msg, W - 1), curses.color_pair(C_MSG))
         if self.popup:
             self._draw_popup(s, W, H)
         if self.inv_open:
@@ -1164,6 +1528,11 @@ class Game(TextSystemMixin):
                 self._draw_inventory(s, W, H)
             except Exception as e:
                 self.msg = f"[draw err] {e}"
+        if self.shop_open:
+            try:
+                self._draw_shop(s, W, H)
+            except Exception as e:
+                self.msg = f"[shop err] {e}"
         s.refresh()
 
     def run(self, s):
@@ -1194,6 +1563,24 @@ class Game(TextSystemMixin):
                     pass  # 死亡/胜利弹窗不响应其他键
                 else:
                     self.popup = None
+                self._draw(s)
+                continue
+
+            if self.shop_open:
+                if k in (27, ord("q"), ord("Q")):
+                    self.shop_open = False
+                elif k == 9:
+                    self.shop_mode = "sell" if self.shop_mode == "buy" else "buy"
+                    self.shop_cursor = 0
+                elif k in (curses.KEY_DOWN, ord("j")):
+                    self._shop_move(+1)
+                elif k in (curses.KEY_UP, ord("k")):
+                    self._shop_move(-1)
+                elif k in (10, 13, curses.KEY_ENTER, ord(" ")):
+                    if self.shop_mode == "buy":
+                        self._shop_buy()
+                    else:
+                        self._shop_sell()
                 self._draw(s)
                 continue
 
@@ -1282,7 +1669,7 @@ def select_race(stdscr):
             r = RACES[k]
             sel = (i == cur)
             mark = "▶" if sel else " "
-            line = f" {mark} {r['sym']}  {r['name']:<8}"
+            line = f" {mark} {r['sym']}  {pad(truncate(r['name'], 8), 8)}"
             attr = (curses.color_pair(2) | curses.A_BOLD | curses.A_REVERSE
                     if sel else curses.color_pair(4))
             try:
@@ -1341,12 +1728,109 @@ def select_race(stdscr):
             return keys[cur]
 
 
+def title_screen(stdscr, state):
+    """主菜单。返回 'new' / 'continue' / 'quit'。state 为存档 dict 或 None"""
+    curses.curs_set(0)
+    stdscr.keypad(True)
+    stdscr.nodelay(False)
+    if curses.has_colors():
+        try:
+            curses.start_color()
+            curses.use_default_colors()
+            bg = -1
+        except curses.error:
+            bg = curses.COLOR_BLACK
+        try:
+            curses.init_pair(1, curses.COLOR_CYAN, bg)
+            curses.init_pair(2, curses.COLOR_YELLOW, bg)
+            curses.init_pair(3, curses.COLOR_GREEN, bg)
+        except curses.error:
+            pass
+
+    items = [("New Game", "new")]
+    if state is not None:
+        items.append((
+            f"Continue  ·  第{state.get('depth',1)}层 "
+            f"·  {state.get('score',0)}分  "
+            f"Lv{state.get('level',1)}",
+            "continue",
+        ))
+    items.append(("Quit", "quit"))
+    cur = 0
+
+    while True:
+        stdscr.clear()
+        H, W = stdscr.getmaxyx()
+
+        title = "N E T H A C K   ·   R E M A K E"
+        sub   = "将 军 的 命 令"
+        try:
+            stdscr.addstr(3, max(0, (W - len(title)) // 2), title,
+                          curses.color_pair(1) | curses.A_BOLD)
+            stdscr.addstr(5, max(0, (W - len(sub)) // 2), sub,
+                          curses.color_pair(2))
+        except curses.error:
+            pass
+
+        list_y = max(8, H // 2 - 2)
+        for i, (label, _) in enumerate(items):
+            sel = (i == cur)
+            mark = "▶ " if sel else "  "
+            line = f"{mark}{label}"
+            x = max(2, (W - len(line)) // 2)
+            attr = (curses.color_pair(2) | curses.A_BOLD | curses.A_REVERSE
+                    if sel else curses.color_pair(3))
+            try:
+                stdscr.addstr(list_y + i * 2, x, line, attr)
+            except curses.error:
+                pass
+
+        hint = " ↑/↓ 选择    Enter 确认    Q 退出 "
+        try:
+            stdscr.addstr(H - 2, max(0, (W - len(hint)) // 2), hint,
+                          curses.color_pair(3) | curses.A_DIM)
+        except curses.error:
+            pass
+
+        stdscr.refresh()
+        k = stdscr.getch()
+        if k in (curses.KEY_UP, ord('k')):
+            cur = (cur - 1) % len(items)
+        elif k in (curses.KEY_DOWN, ord('j')):
+            cur = (cur + 1) % len(items)
+        elif k in (10, 13, curses.KEY_ENTER, ord(' ')):
+            return items[cur][1]
+        elif k in (ord('q'), ord('Q')):
+            return "quit"
+
+
 if __name__ == "__main__":
     data = load_data()
     name = get_player_name()
+
     def _run(stdscr):
-        race_key = select_race(stdscr)
-        g = Game(data, race_key=race_key)
-        g.player_name = name
+        while True:
+            state = Game.load_state()
+            choice = title_screen(stdscr, state)
+            if choice == "quit":
+                return
+            if choice == "new":
+                try:
+                    SAVE_FILE.unlink()
+                except FileNotFoundError:
+                    pass
+                state = None
+                break
+            if choice == "continue" and state is not None:
+                break
+        if state is not None:
+            g = Game(data, race_key=state.get("race_key"))
+            g.player_name = state.get("player_name", name)
+            g.restore(state)
+        else:
+            race_key = select_race(stdscr)
+            g = Game(data, race_key=race_key)
+            g.player_name = name
         g.run(stdscr)
+
     curses.wrapper(_run)
