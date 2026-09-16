@@ -1,0 +1,10 @@
+0002-Change-paths-in-the-default-manpage.patch
+0001-Make-sure-the-user-calling-recover-owns-the-file.patch
+0003-Pkg-config.patch
+0006-Common-config.h-for-all-binary-packages.patch
+0007-Be-a-little-bit-more-useful-with-recover-s-error-mes.patch
+0008-Use-usr-share-pixmaps-nethack-for-pretty-pictures.patch
+0009-Better-way-to-do-it.patch
+0010-dumplog-path.patch
+0017-Debian-and-Linux-specifics-defined-in-unixconf.h.patch
+0021-fix-kfreebsd-ftbfs.patch

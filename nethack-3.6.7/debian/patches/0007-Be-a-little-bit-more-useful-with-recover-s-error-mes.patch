@@ -1,0 +1,97 @@
+From: Ian Jackson <sysadmin@chiark.greenend.org.uk>
+Date: Sun, 31 May 2020 16:23:23 +0200
+Subject: 0007-Be-a-little-bit-more-useful-with-recover-s-error-mes
+
+---
+ util/recover.c | 24 ++++++++++++++++--------
+ 1 file changed, 16 insertions(+), 8 deletions(-)
+
+diff --git a/util/recover.c b/util/recover.c
+index fab06be..59884ca 100644
+--- a/util/recover.c
++++ b/util/recover.c
+@@ -40,7 +40,7 @@ void FDECL(copy_bytes, (int, int));
+ #define Fprintf (void) nhce_message
+ static void nhce_message(FILE *, const char *, ...);
+ #endif
+-
++#define Perror (void) perror
+ #define Close (void) close
+ 
+ #ifdef UNIX
+@@ -66,13 +66,14 @@ extern unsigned _stklen = STKSIZ;
+ #endif
+ char savename[SAVESIZE]; /* holds relative path of save file from playground */
+ 
++const char *dir = (char*) 0;
++
+ int
+ main(argc, argv)
+ int argc;
+ char *argv[];
+ {
+     int argno;
+-    const char *dir = (char *) 0;
+ #ifdef AMIGA
+     char *startdir = (char *) 0;
+ #endif
+@@ -144,7 +145,8 @@ char *argv[];
+     startdir = getcwd(0, 255);
+ #endif
+     if (dir && chdir((char *) dir) < 0) {
+-        Fprintf(stderr, "%s: cannot chdir to %s.\n", argv[0], dir);
++        Fprintf(stderr, "%s: cannot chdir:", argv[0]);
++        Perror(dir);
+         exit(EXIT_FAILURE);
+     }
+ 
+@@ -288,7 +290,9 @@ char *basename;
+             Fprintf(stderr, "\nTrouble accessing level 0 (errno = %d).\n",
+                     errno);
+ #endif
+-        Fprintf(stderr, "Cannot open level 0 for %s.\n", basename);
++        Fprintf(stderr, "Cannot open level 0 for %s in directory %s: ",
++                 basename, dir);
++        Perror(lock);
+         return -1;
+     }
+     if (read(gfd, (genericptr_t) &hpid, sizeof hpid) != sizeof hpid) {
+@@ -315,7 +319,8 @@ char *basename;
+         || (read(gfd, (genericptr_t) &pltmpsiz, sizeof pltmpsiz)
+             != sizeof pltmpsiz) || (pltmpsiz > PL_NSIZ)
+         || (read(gfd, (genericptr_t) plbuf, pltmpsiz) != pltmpsiz)) {
+-        Fprintf(stderr, "Error reading %s -- can't recover.\n", lock);
++        Fprintf(stderr, "Error reading, -- can't recover: ");
++        Perror(lock);
+         Close(gfd);
+         return -1;
+     }
+@@ -330,14 +335,16 @@ char *basename;
+      */
+     sfd = create_savefile();
+     if (sfd < 0) {
+-        Fprintf(stderr, "Cannot create savefile %s.\n", savename);
++        Fprintf(stderr, "Cannot create savefile in %s: ", dir);
++        Perror(savename);
+         Close(gfd);
+         return -1;
+     }
+ 
+     lfd = open_levelfile(savelev);
+     if (lfd < 0) {
+-        Fprintf(stderr, "Cannot open level of save for %s.\n", basename);
++        Fprintf(stderr, "Cannot open level of save for %s: ", basename);
++        Perror(lock);
+         Close(gfd);
+         Close(sfd);
+         return -1;
+@@ -345,7 +352,8 @@ char *basename;
+ 
+     if (write(sfd, (genericptr_t) &version_data, sizeof version_data)
+         != sizeof version_data) {
+-        Fprintf(stderr, "Error writing %s; recovery failed.\n", savename);
++        Fprintf(stderr, "Error writing, recovery failed: ");
++        Perror(savename);
+         Close(gfd);
+         Close(sfd);
+         Close(lfd);

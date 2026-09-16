@@ -1,0 +1,16 @@
+{
+  "name": "Colorful",
+  "description": "高对比度双线风格",
+  "symbols": {
+    "S_vwall": "║", "S_hwall": "═",
+    "S_tlcorn": "╔", "S_trcorn": "╗", "S_blcorn": "╚", "S_brcorn": "╝",
+    "S_crwall": "╬",
+    "S_floor": "·", "S_corr": "░",
+    "S_stone": " "
+  },
+  "colors": {
+    "wall": "blue", "monster": "red", "player": "yellow",
+    "item": "white", "magic": "magenta", "gold": "yellow",
+    "food": "green", "bar": "cyan", "msg": "green"
+  }
+}

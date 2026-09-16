@@ -1,0 +1,17 @@
+debian/nethackrc.tty  etc/nethack
+sys/unix/sysconf      etc/nethack
+debian/recover-all    usr/lib/games/nethack
+debian/recover-helper usr/lib/games/nethack
+dat/nhdat             usr/lib/games/nethack
+dat/hh                usr/lib/games/nethack
+dat/symbols           usr/lib/games/nethack
+util/dgn_comp         usr/lib/games/nethack
+util/dlb              usr/lib/games/nethack
+util/lev_comp         usr/lib/games/nethack
+util/recover          usr/lib/games/nethack
+debian/nethack.png    usr/share/icons/hicolor/48x48/apps
+dat/mapbg.xpm         usr/share/pixmaps/nethack
+dat/pet_mark.xbm      usr/share/pixmaps/nethack
+dat/pilemark.xbm      usr/share/pixmaps/nethack
+dat/rip.xpm           usr/share/pixmaps/nethack
+dat/x11tiles          usr/share/pixmaps/nethack

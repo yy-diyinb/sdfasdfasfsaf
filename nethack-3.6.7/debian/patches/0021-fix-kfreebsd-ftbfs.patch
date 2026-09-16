@@ -1,0 +1,39 @@
+From: "vcheng@debian.org" <vcheng@debian.org>
+Date: Sun, 31 May 2020 17:16:36 +0200
+Subject: 0021-fix-kfreebsd-ftbfs
+
+ "#define BSD 1" also has to be un-commented in include/unixconf.h in order
+ for nethack to be built successfully on kfreebsd (see
+ 0017-Debian-and-Linux-specifics-defined-in-unixconf.h.patch).
+---
+ include/unixconf.h | 8 ++------
+ 1 file changed, 2 insertions(+), 6 deletions(-)
+
+diff --git a/include/unixconf.h b/include/unixconf.h
+index 834a80a..825df9a 100644
+--- a/include/unixconf.h
++++ b/include/unixconf.h
+@@ -305,10 +305,10 @@
+  */
+ #define SAFERHANGUP
+ 
++#include <time.h>
++
+ #if defined(BSD) || defined(ULTRIX)
+ #include <sys/time.h>
+-#else
+-#include <time.h>
+ #endif
+ 
+ #define HLOCK "perm" /* an empty file used for locking purposes */
+@@ -332,10 +332,6 @@
+ #endif
+ 
+ #if defined(BSD) || defined(ULTRIX)
+-#if !defined(DGUX) && !defined(SUNOS4)
+-#define memcpy(d, s, n) bcopy(s, d, n)
+-#define memcmp(s1, s2, n) bcmp(s2, s1, n)
+-#endif
+ #ifdef SUNOS4
+ #include <memory.h>
+ #endif

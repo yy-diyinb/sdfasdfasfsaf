@@ -1,0 +1,89 @@
+From: Joshua Kwan <joshk@triplehelix.org>
+Date: Sun, 31 May 2020 16:32:06 +0200
+Subject: 0017-Debian-and-Linux-specifics-defined-in-unixconf.h
+
+---
+ include/unixconf.h | 16 +++++++++-------
+ src/mail.c         |  5 +++--
+ 2 files changed, 12 insertions(+), 9 deletions(-)
+
+diff --git a/include/unixconf.h b/include/unixconf.h
+index c126d68..834a80a 100644
+--- a/include/unixconf.h
++++ b/include/unixconf.h
+@@ -20,8 +20,9 @@
+  */
+ 
+ /* define exactly one of the following four choices */
+-/* #define BSD 1 */  /* define for 4.n/Free/Open/Net BSD  */
+-                     /* also for relatives like SunOS 4.x, DG/UX, and */
++#if defined(__FreeBSD_kernel__)
++#define BSD 1        /* define for 4.n/Free/Open/Net BSD  */
++#endif               /* also for relatives like SunOS 4.x, DG/UX, and */
+                      /* older versions of Linux */
+ /* #define ULTRIX */ /* define for Ultrix v3.0 or higher (but not lower) */
+                      /* Use BSD for < v3.0 */
+@@ -32,7 +33,7 @@
+                      /* use SYSV for < v6.5 */
+ 
+ /* define any of the following that are appropriate */
+-#define SVR4           /* use in addition to SYSV for System V Release 4 */
++/* #define SVR4 */     /* use in addition to SYSV for System V Release 4 */
+                        /* including Solaris 2+ */
+ #define NETWORK        /* if running on a networked system */
+                        /* e.g. Suns sharing a playground through NFS */
+@@ -106,7 +107,7 @@
+  * If you want the static parts of your playground on a read-only file
+  * system, define VAR_PLAYGROUND to be where the variable parts are kept.
+  */
+-/* #define VAR_PLAYGROUND "/var/lib/games/nethack" */
++#define VAR_PLAYGROUND "/var/games/nethack"
+ 
+ /*
+  * Define DEF_PAGER as your default pager, e.g. "/bin/cat" or "/usr/ucb/more"
+@@ -133,7 +134,7 @@
+  * "extra output" method is used, but not all systems provide access to
+  * a fine-grained timer.
+  */
+-/* #define TIMED_DELAY */ /* usleep() */
++#define TIMED_DELAY /* usleep() */
+ #endif
+ #if defined(MACOSX) && !defined(TIMED_DELAY)
+ #define TIMED_DELAY
+@@ -176,7 +177,7 @@
+ #ifdef AMS
+ #define AMS_MAILBOX "/Mailbox"
+ #else
+-#if defined(__FreeBSD__) || defined(__OpenBSD__)
++#if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__FreeBSD_kernel__)
+ #define DEF_MAILREADER "/usr/bin/mail"
+ #else
+ #define DEF_MAILREADER "/usr/ucb/Mail"
+@@ -194,7 +195,8 @@
+ #endif
+ #endif
+ #else
+-#define DEF_MAILREADER "/bin/mail"
++/* Debian mail reader is /usr/bin/mail, not /bin/mail */
++#define DEF_MAILREADER "/usr/bin/mail"
+ #endif
+ #endif
+ 
+diff --git a/src/mail.c b/src/mail.c
+index 064b69b..f868976 100644
+--- a/src/mail.c
++++ b/src/mail.c
+@@ -68,10 +68,11 @@ static long laststattime;
+ #if !defined(MAILPATH) && defined(AMS) /* Just a placeholder for AMS */
+ #define MAILPATH "/dev/null"
+ #endif
+-#if !defined(MAILPATH) && (defined(LINUX) || defined(__osf__))
++#if !defined(MAILPATH) && defined(__osf__)
+ #define MAILPATH "/var/spool/mail/"
+ #endif
+-#if !defined(MAILPATH) && defined(__FreeBSD__)
++/* Debian uses /var/mail, too. */
++#if !defined(MAILPATH) && (defined(__FreeBSD__) || defined(LINUX) || defined(__GNU__) || defined(__GLIBC__))
+ #define MAILPATH "/var/mail/"
+ #endif
+ #if !defined(MAILPATH) && (defined(BSD) || defined(ULTRIX))

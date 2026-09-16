@@ -1,0 +1,4 @@
+debian/qt/nethackrc.qt        etc/nethack
+debian/qt/nethack-qt.sh       usr/lib/games/nethack
+src/nethack-qt                usr/lib/games/nethack
+debian/nethack-qt.desktop     usr/share/applications

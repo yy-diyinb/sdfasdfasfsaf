@@ -1,0 +1,9 @@
+#!/bin/sh
+
+set -e
+
+if [ "$1" = remove ]; then
+    update-alternatives --remove nethack /usr/lib/games/nethack/nethack-console.sh
+fi
+
+#DEBHELPER#

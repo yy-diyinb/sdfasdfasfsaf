@@ -1,0 +1,10 @@
+{
+  "name": "Default ASCII",
+  "description": "NetHack 原始字符风格",
+  "symbols": {},
+  "colors": {
+    "wall": "white", "monster": "red", "player": "yellow",
+    "item": "white", "magic": "magenta", "gold": "yellow",
+    "food": "green", "bar": "cyan", "msg": "green"
+  }
+}

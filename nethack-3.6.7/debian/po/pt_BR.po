@@ -1,0 +1,76 @@
+#
+#    Translators, if you are not familiar with the PO format, gettext
+#    documentation is worth reading, especially sections dedicated to
+#    this format, e.g. by running:
+#         info -n '(gettext)PO Files'
+#         info -n '(gettext)Header Entry'
+#
+#    Some information specific to po-debconf are available at
+#            /usr/share/doc/po-debconf/README-trans
+#         or http://www.debian.org/intl/l10n/po-debconf/README-trans
+#
+#    Developers do not need to manually edit POT or PO files.
+#
+# Felipe Augusto van de Wiel (faw) <faw@cathedrallabs.org>, 2006.
+# Paulo Henrique de Lima Santana (phls) <phls@debian.org>, 2022.
+# Licensed under the same terms of the nethack package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: nethack_3.6.6-3\n"
+"Report-Msgid-Bugs-To: nethack@packages.debian.org\n"
+"POT-Creation-Date: 2009-03-17 07:46+0100\n"
+"PO-Revision-Date: 2022-11-15 18:54-0300\n"
+"Last-Translator: Paulo Henrique de Lima Santana (phls) <phls@debian.org>\n"
+"Language-Team: l10n portuguese <debian-l10n-portuguese@lists.debian.org>\n"
+"Language: pt_BR\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: Poedit 3.1.1\n"
+
+#. Type: boolean
+#. Description
+#: ../nethack-common.templates:2001
+msgid "Use setgid bit with NetHack's recover utility?"
+msgstr "Usar setgid bit com o utilitário de recuperação do NetHack?"
+
+#. Type: boolean
+#. Description
+#: ../nethack-common.templates:2001
+msgid ""
+"The \"recover\" program in the package nethack-common is traditionally "
+"installed with the \"setgid\" bit set, so that all users can use it to "
+"recover their own save files after a crash (with \"games\" group "
+"privileges). This is a potential source of security problems."
+msgstr ""
+"O programa \"recover\" no pacote nethack-common é tradicionalmente "
+"instalado com o bit \"setgid\" definido, para que todos os usuários possam "
+"usá-lo para recuperar seus próprios arquivos salvos após uma falha (com "
+"privilégios de grupo \"games\"). Esta é uma fonte potencial de problemas "
+"de segurança."
+
+#. Type: boolean
+#. Description
+#: ../nethack-common.templates:2001
+msgid ""
+"This package includes a script that runs during system boot, invoking "
+"recover on any broken save files it finds. This makes it less likely that "
+"users will need to run it themselves, so the default is to install recover "
+"without the special permission bits required for that."
+msgstr ""
+"Este pacote inclui um script que é executado durante a inicialização do "
+"sistema, invocando a recuperação em qualquer arquivo salvo quebrado que "
+"encontrar. Isso torna menos provável que os usuários precisem executá-lo "
+"por conta própria, portanto, o padrão é instalar o recover sem os bits de "
+"permissão especiais necessários para isso."
+
+#. Type: boolean
+#. Description
+#: ../nethack-common.templates:2001
+msgid ""
+"If you choose this option, unprivileged users will be able to run "
+"\"recover\"."
+msgstr ""
+"Se você escolher esta opção, usuários sem privilégios poderão executar "
+"\"recover\"."

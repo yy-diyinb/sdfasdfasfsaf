@@ -1,0 +1,140 @@
+Source: nethack
+Section: games
+Priority: optional
+Maintainer: Ubuntu Developers <ubuntu-devel-discuss@lists.ubuntu.com>
+XSBC-Original-Maintainer: Debian Games Team <pkg-games-devel@lists.alioth.debian.org>
+Uploaders:
+ Vincent Cheng <vcheng@debian.org>,
+ James Cowgill <jcowgill@debian.org>
+Build-Depends:
+ bison,
+ bsdextrautils,
+ debhelper-compat (= 13),
+ flex,
+ groff-base,
+ libncurses-dev,
+ libx11-dev,
+ libxaw7-dev | libxaw-dev,
+ libxext-dev,
+ libxmu-dev,
+ libxt-dev,
+ pkg-config,
+ po-debconf,
+ qtbase5-dev,
+ qtmultimedia5-dev,
+ xfonts-utils
+Standards-Version: 4.6.2
+Homepage: https://www.nethack.org
+Vcs-Git: https://salsa.debian.org/games-team/nethack.git
+Vcs-Browser: https://salsa.debian.org/games-team/nethack
+Rules-Requires-Root: binary-targets
+
+Package: nethack-common
+Architecture: any
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Recommends: nethack-console | nethack-x11
+Description: dungeon crawl game - common files
+ NetHack is a wonderfully silly, yet quite addictive, Dungeons &
+ Dragons-style adventure game. You play a character from one of many
+ classes (such as wizard, ranger, or tourist), fighting your way down to
+ retrieve the Amulet of Yendor (try saying THAT one backwards!) for your
+ god. On the way, you might encounter a quantum mechanic or two, or
+ perhaps King Arthur, or - if you're REALLY lucky - the Ravenous
+ Bugblatter Beast of Traal.
+ .
+ You should install a front-end for NetHack if you
+ wish to play the game.  Each of them includes the
+ original non-graphical version, and they can all be installed
+ at the same time:
+  - nethack-console: no graphics, just plain NetHack;
+  - nethack-x11    : original X11/Athena-based graphical version;
+  - nethack-qt     : Qt version.
+ .
+ The various graphical front-ends for NetHack all share a large
+ number of files in common.  This package contains the graphics,
+ dungeon levels, and utilities common to all NetHack front-ends.
+ .
+ It also provides a few utilities such as recover, for retrieving
+ auto-save files in case of a power failure, and dgn_comp and
+ lev_comp, two utilities for making your own NetHack levels and
+ dungeons. The "recover" utility will be run every time the system
+ boots, if there are any auto-save files available.
+
+Package: nethack-console
+Depends:
+ nethack-common (= ${binary:Version}),
+ ${misc:Depends},
+ ${shlibs:Depends}
+Architecture: any
+Provides: nethack
+Description: dungeon crawl game - text-based interface
+ NetHack is a wonderfully silly, yet quite addictive, Dungeons &
+ Dragons-style adventure game. You play a character from one of many
+ classes (such as wizard, ranger, or tourist), fighting your way down to
+ retrieve the Amulet of Yendor (try saying THAT one backwards!) for your
+ god. On the way, you might encounter a quantum mechanic or two, or
+ perhaps King Arthur, or - if you're REALLY lucky - the Ravenous
+ Bugblatter Beast of Traal.
+ .
+ You should install a front-end for NetHack if you
+ wish to play the game.  Each of them includes the
+ original non-graphical version, and they can all be installed
+ at the same time:
+  - nethack-console: no graphics, just plain NetHack;
+  - nethack-x11    : original X11/Athena-based graphical version;
+  - nethack-qt     : Qt version.
+ .
+ This package provides the plain console version of NetHack.
+
+Package: nethack-x11
+Depends:
+ nethack-common (= ${binary:Version}),
+ ${misc:Depends},
+ ${shlibs:Depends}
+Architecture: any
+Provides: nethack
+Description: dungeon crawl game - X11 interface
+ NetHack is a wonderfully silly, yet quite addictive, Dungeons &
+ Dragons-style adventure game. You play a character from one of many
+ classes (such as wizard, ranger, or tourist), fighting your way down to
+ retrieve the Amulet of Yendor (try saying THAT one backwards!) for your
+ god. On the way, you might encounter a quantum mechanic or two, or
+ perhaps King Arthur, or - if you're REALLY lucky - the Ravenous
+ Bugblatter Beast of Traal.
+ .
+ You should install a front-end for NetHack if you
+ wish to play the game.  Each of them includes the
+ original non-graphical version, and they can all be installed
+ at the same time:
+  - nethack-console: no graphics, just plain NetHack;
+  - nethack-x11    : original X11/Athena-based graphical version;
+  - nethack-qt     : Qt version.
+ .
+ This package provides the text and X11/Athena-based graphical versions
+ of NetHack.
+
+Package: nethack-qt
+Depends:
+ nethack-common (= ${binary:Version}),
+ ${misc:Depends},
+ ${shlibs:Depends}
+Architecture: any
+Provides: nethack
+Description: dungeon crawl game - Qt interface
+ NetHack is a wonderfully silly, yet quite addictive, Dungeons &
+ Dragons-style adventure game. You play a character from one of many
+ classes (such as wizard, ranger, or tourist), fighting your way down to
+ retrieve the Amulet of Yendor (try saying THAT one backwards!) for your
+ god. On the way, you might encounter a quantum mechanic or two, or
+ perhaps King Arthur, or - if you're REALLY lucky - the Ravenous
+ Bugblatter Beast of Traal.
+ .
+ You should install a front-end for NetHack if you
+ wish to play the game.  Each of them includes the
+ original non-graphical version, and they can all be installed
+ at the same time:
+  - nethack-console: no graphics, just plain NetHack;
+  - nethack-x11    : original X11/Athena-based graphical version;
+  - nethack-qt     : Qt version.
+ .
+ This package provides the Qt-based graphical versions of NetHack.

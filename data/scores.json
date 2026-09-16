@@ -1,0 +1,82 @@
+[
+  {
+    "name": "yy",
+    "score": 9312,
+    "depth": 32,
+    "level": 25,
+    "kills": 589,
+    "date": "2026-09-16 17:11"
+  },
+  {
+    "name": "yy",
+    "score": 7769,
+    "depth": 28,
+    "level": 22,
+    "kills": 532,
+    "date": "2026-09-16 16:52"
+  },
+  {
+    "name": "yy",
+    "score": 4975,
+    "depth": 23,
+    "level": 18,
+    "kills": 462,
+    "date": "2026-09-16 16:23"
+  },
+  {
+    "name": "yy",
+    "score": 4672,
+    "depth": 22,
+    "level": 18,
+    "kills": 466,
+    "date": "2026-09-16 15:30"
+  },
+  {
+    "name": "yy",
+    "score": 1863,
+    "depth": 10,
+    "level": 10,
+    "kills": 166,
+    "date": "2026-09-16 14:39"
+  },
+  {
+    "name": "yy",
+    "score": 1601,
+    "depth": 10,
+    "level": 9,
+    "kills": 135,
+    "date": "2026-09-16 15:15"
+  },
+  {
+    "name": "yy",
+    "score": 1298,
+    "depth": 9,
+    "level": 8,
+    "kills": 110,
+    "date": "2026-09-16 14:40"
+  },
+  {
+    "name": "test2",
+    "score": 800,
+    "depth": 12,
+    "level": 5,
+    "kills": 40,
+    "date": "2026-09-16 14:45"
+  },
+  {
+    "name": "test1",
+    "score": 500,
+    "depth": 10,
+    "level": 3,
+    "kills": 20,
+    "date": "2026-09-16 14:45"
+  },
+  {
+    "name": "test3",
+    "score": 300,
+    "depth": 8,
+    "level": 2,
+    "kills": 15,
+    "date": "2026-09-16 14:45"
+  }
+]

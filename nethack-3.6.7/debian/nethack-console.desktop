@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=NetHack (No GUI)
+Icon=nethack
+Exec=/usr/games/nethack-console
+Terminal=true
+Categories=Game;AdventureGame;ConsoleOnly;
+Keywords=adventure;roguelike;maze;dungeon;
+Comment=Dungeon crawl game - console version

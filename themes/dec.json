@@ -1,0 +1,16 @@
+{
+  "name": "DECgraphics",
+  "description": "制表符墙壁风格",
+  "symbols": {
+    "S_vwall": "│", "S_hwall": "─",
+    "S_tlcorn": "┌", "S_trcorn": "┐", "S_blcorn": "└", "S_brcorn": "┘",
+    "S_crwall": "┼",
+    "S_floor": "·", "S_corr": "▒",
+    "S_stone": " "
+  },
+  "colors": {
+    "wall": "cyan", "monster": "red", "player": "yellow",
+    "item": "white", "magic": "magenta", "gold": "yellow",
+    "food": "green", "bar": "cyan", "msg": "green"
+  }
+}

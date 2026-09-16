@@ -1,0 +1,53 @@
+From: Joshua Kwan <joshk@triplehelix.org>
+Date: Sun, 31 May 2020 16:19:35 +0200
+Subject: 0002-Change-paths-in-the-default-manpage
+
+---
+ doc/nethack.6 | 13 +++++++------
+ 1 file changed, 7 insertions(+), 6 deletions(-)
+
+diff --git a/doc/nethack.6 b/doc/nethack.6
+index dda4c89..a06115a 100644
+--- a/doc/nethack.6
++++ b/doc/nethack.6
+@@ -130,9 +130,10 @@ Because the option list can be very long (particularly when specifying
+ graphics characters), options may also be included in a configuration
+ file.
+ The default is located in your home directory and
+-named .nethackrc on Unix systems.  On other systems, the default may be
+-different, usually NetHack.cnf.  On DOS or Windows, the name is
+-defaults.nh, while on the Macintosh or BeOS, it is NetHack Defaults.
++named .nethackrc on Unix systems.  
++On Debian systems, use .nethackrc.gnome for the Gnome windowing port,
++use .nethackrc.x11 for the X11 windowing port, and use .nethackrc.qt for the
++QT windowing port.  You can use .nethackrc.tty for the non-graphical version.
+ The configuration file's location may be specified by setting NETHACKOPTIONS
+ to a string consisting of an @ character followed by the filename.
+ .PP
+@@ -219,7 +220,7 @@ option, which must be the first argument if it appears,
+ supplies a directory which is to serve as the playground.
+ It overrides the value from NETHACKDIR, HACKDIR,
+ or the directory specified by the game administrator during compilation
+-(usually /usr/games/lib/nethackdir).
++(usually /usr/lib/games/nethack).
+ This option is usually only useful to the game administrator.
+ The playground must contain several auxiliary files such as help files,
+ the list of top scorers, and a subdirectory
+@@ -265,7 +266,7 @@ name is '.nethackrc' in the user's home directory.
+ 
+ .br
+ All other files are in the playground directory,
+-normally /usr/games/lib/nethackdir.
++normally /usr/lib/games/nethack.
+ If DLB was defined during the compile, the data files and special levels
+ will be inside a larger file, normally nhdat, instead of being separate
+ files.
+@@ -375,7 +376,7 @@ MAIL	Mailbox file.
+ .br
+ MAILREADER	Replacement for default reader
+ .br
+-	(probably /bin/mail or /usr/ucb/mail).
++	(probably /usr/bin/mail).
+ .br
+ NETHACKDIR or HACKDIR	Playground.
+ .br

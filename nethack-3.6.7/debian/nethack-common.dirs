@@ -1,0 +1,2 @@
+var/games/nethack/save
+var/games/nethack/dumps

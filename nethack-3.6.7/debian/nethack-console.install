@@ -1,0 +1,4 @@
+debian/console/nethackrc.console  etc/nethack
+debian/console/nethack-console.sh usr/lib/games/nethack
+src/nethack-console               usr/lib/games/nethack
+debian/nethack-console.desktop    usr/share/applications

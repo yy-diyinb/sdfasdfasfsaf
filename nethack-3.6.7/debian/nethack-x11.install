@@ -1,0 +1,7 @@
+debian/x11/NetHack            etc/X11/app-defaults
+debian/x11/nethackrc.x11      etc/nethack
+debian/x11/nethack-x11.sh     usr/lib/games/nethack
+debian/x11/nethack-x11-tty.sh usr/lib/games/nethack
+src/nethack-x11               usr/lib/games/nethack
+debian/nethack-x11.desktop    usr/share/applications
+debian/nh10.pcf.gz            usr/share/fonts/X11/misc

@@ -1,0 +1,12 @@
+[Unit]
+Description=Recover NetHack save files
+Documentation=man:recover(6) man:nethack(6)
+RequiresMountsFor=/var/games/nethack
+ConditionPathExistsGlob=/var/games/nethack/*.0
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/games/nethack/recover-all
+
+[Install]
+WantedBy=multi-user.target

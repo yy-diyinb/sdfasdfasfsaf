@@ -1,0 +1,21 @@
+[
+  {
+    "name": "血祭",
+    "sym": "✚",
+    "charges": 3,
+    "effects": [
+      {
+        "do": "cost_hp",
+        "amount": 15
+      },
+      {
+        "do": "damage_nearest",
+        "amount": 10
+      },
+      {
+        "do": "shield",
+        "amount": 3
+      }
+    ]
+  }
+]

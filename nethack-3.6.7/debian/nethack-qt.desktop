@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=NetHack Qt
+Icon=nethack
+Exec=/usr/games/nethack-qt
+Terminal=false
+Categories=Game;AdventureGame;
+Keywords=adventure;roguelike;maze;dungeon;
+StartupWMClass=NetHack
+Comment=Dungeon crawl game - GUI version

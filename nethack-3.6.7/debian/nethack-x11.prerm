@@ -1,0 +1,10 @@
+#!/bin/sh
+
+set -e
+
+if [ "$1" = remove ]; then
+    update-alternatives --remove nethack /usr/lib/games/nethack/nethack-x11.sh
+    update-alternatives --remove nethack /usr/lib/games/nethack/nethack-x11-tty.sh
+fi
+
+#DEBHELPER#

@@ -1,0 +1,33 @@
+From: Joshua Kwan <joshk@triplehelix.org>
+Date: Sun, 31 May 2020 16:31:45 +0200
+Subject: 0009-Better-way-to-do-it
+
+---
+ src/windows.c | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+--- a/src/windows.c
++++ b/src/windows.c
+@@ -243,15 +243,21 @@
+ choose_windows(s)
+ const char *s;
+ {
++    char *ow; const char *wt;
+     int i;
+     char *tmps = 0;
+ 
++    if (!strcmp(s, DEFAULT_WINDOW_SYS) && (ow = getenv("OVERRIDEWIN")))
++      wt = ow;
++    else
++      wt = s;
++
+     for (i = 0; winchoices[i].procs; i++) {
+         if ('+' == winchoices[i].procs->name[0])
+             continue;
+         if ('-' == winchoices[i].procs->name[0])
+             continue;
+-        if (!strcmpi(s, winchoices[i].procs->name)) {
++        if (!strcmpi(wt, winchoices[i].procs->name)) {
+             windowprocs = *winchoices[i].procs;
+ 
+             if (last_winchoice && last_winchoice->ini_routine)

@@ -1,0 +1,86 @@
+#!/usr/bin/make -f
+
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+export VERBOSEMAKE = 1
+PKG_CONFIG ?= pkg-config
+
+ifneq (,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
+        MAKEFLAGS += -j$(patsubst parallel=%,%,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
+endif
+DEB_CFLAGS := $(shell dpkg-buildflags --get CFLAGS)
+DEB_CPPFLAGS := $(shell dpkg-buildflags --get CPPFLAGS)
+DEB_LDFLAGS := $(shell dpkg-buildflags --get LDFLAGS)
+
+# upstream Makefile only has CFLAGS (missing CPPFLAGS)
+# and does not give CFLAGS to linking calls, so add them.
+# also needs some stuff so the Makefile can be overriden:
+CFLAGS = $(DEB_CPPFLAGS) $(DEB_CFLAGS) -I../include -Wall -DGCC_WARN -DNOTPARMDECL
+LFLAGS = $(DEB_CFLAGS) $(DEB_LDFLAGS)
+
+override_dh_auto_build: Makefile
+	+$(call build_target,console)
+	+$(call build_target,x11)
+	+$(call build_target,qt)
+	touch src/nethack-dummy ; sleep 2
+	$(MAKE) -j1 LFLAGS='$(LFLAGS)' CFLAGS='$(CFLAGS) -DUSE_XPM' \
+	  GAME=src/nethack-dummy \
+	  VARDATND="x11tiles NetHack.ad pet_mark.xbm pilemark.xbm rip.xpm mapbg.xpm" \
+	  all
+	/usr/bin/bdftopcf win/X11/nh10.bdf | gzip -9fn > debian/nh10.pcf.gz
+
+TARGETS = console x11 qt
+
+define build_target
+	$(MAKE) clean
+	touch include/config.h
+	sleep 2
+	$(MAKE) LFLAGS='$(LFLAGS)' CFLAGS='$(CFLAGS)' LINK='$(LINK_$1)' -C util makedefs
+	$(MAKE) LFLAGS='$(LFLAGS)' CFLAGS='$(CFLAGS) $(EXTRACPP_$1)' \
+		WINSRC='$(SRC_$1)' WINOBJ='$(OBJ_$1)' WINLIB='$(LIB_$1)' \
+		LINK='$(LINK_$1)' GAME='nethack-$1' -C src 'nethack-$1'
+endef
+SRC_console = $$(WINTTYSRC) $$(WINCURSESSRC)
+OBJ_console = $$(WINTTYOBJ) $$(WINCURSESOBJ)
+LIB_console = -lcurses
+LINK_console = $$(CC)
+EXTRACPP_console = -DCURSES_GRAPHICS
+SRC_x11 = $$(WINTTYSRC) $$(WINX11SRC)
+OBJ_x11 = $$(WINTTYOBJ) $$(WINX11OBJ)
+LIB_x11 = -lncurses -lXaw -Wl,--as-needed -lXmu -lXext -Wl,--no-as-needed -lXt -lXpm -lX11 -Wl,--as-needed -lm -Wl,--no-as-needed
+LINK_x11 = $$(CC)
+EXTRACPP_x11 = -DX11_GRAPHICS
+export QTDIR=/usr
+SRC_qt = $$(WINQT4SRC)
+OBJ_qt = $$(WINQT4OBJ)
+LIB_qt = $$(WINQT5LIB)
+LINK_qt = $$(CXX)
+EXTRACPP_qt = -DQT_GRAPHICS -DDEFAULT_WINDOW_SYS=\"Qt\" -DNOTTYGRAPHICS $(shell $(PKG_CONFIG) Qt5Gui Qt5Widgets Qt5Multimedia --cflags) -fPIC
+
+
+Makefile:
+# setup.sh creates all the Makefiles.
+	sh sys/unix/setup.sh
+
+override_dh_auto_install:
+
+override_dh_auto_clean:
+	rm -f debian/nh10.pcf.gz
+	rm -f $(patsubst %,src/nethack-%,$(TARGETS) dummy)
+	if [ -f Makefile ] ; then $(MAKE) spotless ; fi
+	find . -name Makefile -print0 | xargs -r -0 --no-run-if-empty rm
+
+override_dh_installinit:
+	dh_installinit --no-start
+
+override_dh_fixperms:
+	dh_fixperms
+	chgrp games debian/nethack-common/usr/lib/games/nethack/recover
+	chgrp -R games debian/nethack-common/var/games/nethack
+	chmod -R 2775 debian/nethack-common/var/games/nethack
+	set -e; for flavor in $(TARGETS); do \
+		chgrp games debian/nethack-$$flavor/usr/lib/games/nethack/nethack-$$flavor; \
+		chmod 2755 debian/nethack-$$flavor/usr/lib/games/nethack/nethack-$$flavor; \
+	done
+
+%:
+	dh $@

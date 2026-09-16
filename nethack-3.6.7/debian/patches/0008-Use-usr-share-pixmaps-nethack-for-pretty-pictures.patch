@@ -1,0 +1,44 @@
+From: Joshua Kwan <joshk@triplehelix.org>
+Date: Sun, 31 May 2020 16:28:34 +0200
+Subject: 0008-Use-usr-share-pixmaps-nethack-for-pretty-pictures
+
+---
+ win/X11/winX.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/win/X11/winX.c b/win/X11/winX.c
+index 463c030..5af2566 100644
+--- a/win/X11/winX.c
++++ b/win/X11/winX.c
+@@ -1428,7 +1428,7 @@ static XtResource resources[] = {
+       sizeof(Boolean), XtOffset(AppResources *, double_tile_size), XtRString,
+       nhStr("False") },
+     { nhStr("tile_file"), nhStr("Tile_file"), XtRString, sizeof(String),
+-      XtOffset(AppResources *, tile_file), XtRString, nhStr("x11tiles") },
++      XtOffset(AppResources *, tile_file), XtRString, nhStr(PIXMAPDIR "x11tiles") },
+     { nhStr("icon"), nhStr("Icon"), XtRString, sizeof(String),
+       XtOffset(AppResources *, icon), XtRString, nhStr("nh72") },
+     { nhStr("message_lines"), nhStr("Message_lines"), XtRInt, sizeof(int),
+@@ -1438,19 +1438,19 @@ static XtResource resources[] = {
+       XtOffset(AppResources *, extcmd_height_delta), XtRString, nhStr("0") },
+     { nhStr("pet_mark_bitmap"), nhStr("Pet_mark_bitmap"), XtRString,
+       sizeof(String), XtOffset(AppResources *, pet_mark_bitmap), XtRString,
+-      nhStr("pet_mark.xbm") },
++      nhStr(PIXMAPDIR "pet_mark.xbm") },
+     { nhStr("pet_mark_color"), nhStr("Pet_mark_color"), XtRPixel,
+       sizeof(XtRPixel), XtOffset(AppResources *, pet_mark_color), XtRString,
+       nhStr("Red") },
+     { nhStr("pilemark_bitmap"), nhStr("Pilemark_bitmap"), XtRString,
+       sizeof(String), XtOffset(AppResources *, pilemark_bitmap), XtRString,
+-      nhStr("pilemark.xbm") },
++      nhStr(PIXMAPDIR "pilemark.xbm") },
+     { nhStr("pilemark_color"), nhStr("Pilemark_color"), XtRPixel,
+       sizeof(XtRPixel), XtOffset(AppResources *, pilemark_color), XtRString,
+       nhStr("Green") },
+ #ifdef GRAPHIC_TOMBSTONE
+     { nhStr("tombstone"), nhStr("Tombstone"), XtRString, sizeof(String),
+-      XtOffset(AppResources *, tombstone), XtRString, nhStr("rip.xpm") },
++      XtOffset(AppResources *, tombstone), XtRString, PIXMAPDIR "rip.xpm" },
+     { nhStr("tombtext_x"), nhStr("Tombtext_x"), XtRInt, sizeof(int),
+       XtOffset(AppResources *, tombtext_x), XtRString, nhStr("155") },
+     { nhStr("tombtext_y"), nhStr("Tombtext_y"), XtRInt, sizeof(int),

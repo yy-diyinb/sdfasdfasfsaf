@@ -1,0 +1,107 @@
+From: Joshua Kwan <joshk@triplehelix.org>
+Date: Sun, 31 May 2020 16:20:08 +0200
+Subject: 0001-Make-sure-the-user-calling-recover-owns-the-file
+
+---
+ util/recover.c | 50 +++++++++++++++++++++++++++++++++++++++++++++++---
+ 1 file changed, 47 insertions(+), 3 deletions(-)
+
+diff --git a/util/recover.c b/util/recover.c
+index a3ed809..fab06be 100644
+--- a/util/recover.c
++++ b/util/recover.c
+@@ -17,6 +17,12 @@
+ #include <fcntl.h>
+ #endif
+ 
++#ifdef SECURE
++#include <sys/types.h>
++#include <sys/stat.h>
++#include <unistd.h>
++#endif
++
+ #ifdef VMS
+ extern int FDECL(vms_creat, (const char *, unsigned));
+ extern int FDECL(vms_open, (const char *, int, unsigned));
+@@ -112,15 +118,23 @@ char *argv[];
+     }
+ #if defined(SECURE) && !defined(VMS)
+     if (dir
+-#ifdef HACKDIR
++# ifdef VAR_PLAYGROUND
++            && strcmp(dir, VAR_PLAYGROUND)
++# else
++#  ifdef HACKDIR
+         && strcmp(dir, HACKDIR)
+-#endif
+-            ) {
++#  endif
++# endif /* VAR_PLAYGROUND */
++        ) {
+         (void) setgid(getgid());
+         (void) setuid(getuid());
+     }
+ #endif /* SECURE && !VMS */
+ 
++#ifdef VAR_PLAYGROUND
++    if (!dir) dir = VAR_PLAYGROUND;
++#endif
++
+ #ifdef HACKDIR
+     if (!dir)
+         dir = HACKDIR;
+@@ -166,17 +180,40 @@ int lev;
+ #endif
+ }
+ 
++#ifdef SECURE
++static uid_t save_uid = -1;
++#endif
++
+ int
+ open_levelfile(lev)
+ int lev;
+ {
+     int fd;
++#ifdef SECURE
++    struct stat level_stat;
++    uid_t uid;
++#endif
+ 
+     set_levelfile_name(lev);
+ #if defined(MICRO) || defined(WIN32) || defined(MSDOS)
+     fd = open(lock, O_RDONLY | O_BINARY);
+ #else
+     fd = open(lock, O_RDONLY, 0);
++#endif
++    /* Security check: does the user calling recover own the file? */
++#ifdef SECURE
++    if (fd != -1) {
++        uid = getuid();
++        if (fstat(fd, &level_stat) == -1) {
++            Fprintf(stderr, "No permission to stat level file %s.\n", lock);
++            return -1;
++        }
++        if (uid != 0 && level_stat.st_uid != uid) {
++            Fprintf(stderr, "You are not the owner of level file %s.\n", lock);
++            return -1;
++        }
++        save_uid = level_stat.st_uid;
++    }
+ #endif
+     return fd;
+ }
+@@ -191,6 +228,13 @@ create_savefile()
+ #else
+     fd = creat(savename, FCMASK);
+ #endif
++
++#ifdef SECURE
++    if (fchown(fd, save_uid, -1) == -1) {
++        Fprintf(stderr, "could not chown %s to %i!\n", savename,
++            save_uid);
++    }
++#endif
+     return fd;
+ }
+ 

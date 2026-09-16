@@ -1,0 +1,15 @@
+Author: Reiner Herrmann <reiner@reiner-h.de>
+Description: set DUMPLOGFILE in sysconf
+Forwarded: not-needed
+
+--- a/sys/unix/sysconf
++++ b/sys/unix/sysconf
+@@ -103,7 +103,7 @@
+ #   %D current time, YYYYMMDDhhmmss format
+ #   %n player name
+ #   %N first character of player name
+-#DUMPLOGFILE=/tmp/nethack.%n.%d.log
++DUMPLOGFILE=/var/games/nethack/dumps/nethack.%n.%d.log
+ 
+ # Number of bones file pools.
+ # The pool you belong to is determined at game start. You will

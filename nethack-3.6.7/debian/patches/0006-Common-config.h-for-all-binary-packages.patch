@@ -1,0 +1,127 @@
+From: Joshua Kwan <joshk@triplehelix.org>
+Date: Sun, 31 May 2020 16:21:22 +0200
+Subject: 0006-Common-config.h-for-all-binary-packages
+
+---
+ include/config.h | 31 +++++++++++++++++++------------
+ 1 file changed, 19 insertions(+), 12 deletions(-)
+
+--- a/include/config.h
++++ b/include/config.h
+@@ -42,6 +42,8 @@
+  * Define all of those you want supported in your binary.
+  * Some combinations make no sense.  See the installation document.
+  */
++
++#ifndef QT_GRAPHICS
+ #if !defined(NOTTYGRAPHICS)
+ #define TTY_GRAPHICS /* good old tty based graphics */
+ #endif
+@@ -51,6 +53,11 @@
+ /* #define GNOME_GRAPHICS */ /* Gnome interface */
+ /* #define MSWIN_GRAPHICS */ /* Windows NT, CE, Graphics */
+ 
++/* Debian default window system is always tty; they have to set their
++ * own if they want another one (or just use the scripts */
++#define DEFAULT_WINDOW_SYS "tty"
++#endif
++
+ /*
+  * Define the default window system.  This should be one that is compiled
+  * into your system (see defines above).  Known window systems are:
+@@ -134,7 +141,7 @@
+  * would allow:
+  *  xpmtoppm <x11tiles.xpm | pnmscale 1.25 | ppmquant 90 >x11tiles_big.xpm
+  */
+-/* # define USE_XPM */ /* Disable if you do not have the XPM library */
++#define USE_XPM /* Disable if you do not have the XPM library */
+ #ifdef USE_XPM
+ #define GRAPHIC_TOMBSTONE /* Use graphical tombstone (rip.xpm) */
+ #endif
+@@ -198,7 +205,7 @@
+ 
+ #ifndef SYSCF
+ #define SYSCF                /* use a global configuration */
+-#define SYSCF_FILE "sysconf" /* global configuration is in a file */
++#define SYSCF_FILE "/etc/nethack/sysconf" /* global configuration is in a file */
+ #endif
+ 
+ #ifndef GDBPATH
+@@ -213,7 +220,6 @@
+ #define LOGFILE  "logfile"  /* larger file for debugging purposes */
+ #define XLOGFILE "xlogfile" /* even larger logfile */
+ #define NEWS     "news"     /* the file containing the latest hack news */
+-#define PANICLOG "paniclog" /* log of panic and impossible events */
+ 
+ /* alternative paniclog format, better suited for public servers with
+    many players, as it saves the player name and the game start time */
+@@ -263,11 +269,8 @@
+ 
+ #if defined(UNIX) && !defined(ZLIB_COMP) && !defined(COMPRESS)
+ /* path and file name extension for compression program */
+-#define COMPRESS "/usr/bin/compress" /* Lempel-Ziv compression */
+-#define COMPRESS_EXTENSION ".Z"      /* compress's extension */
+-/* An example of one alternative you might want to use: */
+-/* #define COMPRESS "/usr/local/bin/gzip" */ /* FSF gzip compression */
+-/* #define COMPRESS_EXTENSION ".gz" */       /* normal gzip extension */
++#define COMPRESS "/bin/gzip"     /* FSF gzip compression */
++#define COMPRESS_EXTENSION ".gz" /* normal gzip extension */
+ #endif
+ 
+ #ifndef COMPRESS
+@@ -311,7 +314,7 @@
+  *      a tar-like file, thus making a neater installation.  See *conf.h
+  *      for detailed configuration.
+  */
+-/* #define DLB */ /* not supported on all platforms */
++#define DLB  /* not supported on all platforms */
+ 
+ /*
+  *      Defining REPRODUCIBLE_BUILD causes 'util/makedefs -v' to construct
+@@ -332,7 +335,7 @@
+  *      and obtain an identical copy as was produced by a previous build.
+  *      Not necessary for normal game play....
+  */
+-/* #define REPRODUCIBLE_BUILD */ /* use getenv("SOURCE_DATE_EPOCH") instead
++#define REPRODUCIBLE_BUILD       /* use getenv("SOURCE_DATE_EPOCH") instead
+                                     of current time when creating date.h */
+ 
+ /*
+@@ -352,7 +355,7 @@
+  * otherwise it will be the current directory.
+  */
+ #ifndef HACKDIR
+-#define HACKDIR "/usr/games/lib/nethackdir"
++#define HACKDIR "/usr/lib/games/nethack"
+ #endif
+ 
+ /*
+@@ -362,7 +365,8 @@
+  * since the user might create files in a directory of his choice.
+  * Of course SECURE is meaningful only if HACKDIR is defined.
+  */
+-/* #define SECURE */ /* do setuid(getuid()) after chdir() */
++#define SECURE /* do setuid(getuid()) after chdir() */
++#define PIXMAPDIR "/usr/share/pixmaps/nethack/"
+ 
+ /*
+  * If it is desirable to limit the number of people that can play Hack
+@@ -543,7 +547,7 @@
+    whole thing, then type a new end for the text. */
+ /* #define EDIT_GETLIN */
+ 
+-/* #define DUMPLOG */  /* End-of-game dump logs */
++#define DUMPLOG  /* End-of-game dump logs */
+ #ifdef DUMPLOG
+ 
+ #ifndef DUMPLOG_MSG_COUNT
+@@ -570,6 +574,9 @@
+ 
+ #define USE_ISAAC64 /* Use cross-plattform, bundled RNG */
+ 
++/* Paranoid confirmation when hitting peacefuls */
++#define PARANOID
++
+ /* End of Section 4 */
+ 
+ #ifdef TTY_TILES_ESCCODES
